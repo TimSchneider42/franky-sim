@@ -56,7 +56,7 @@ def genesis_sim():
                 "finger_joint1",
                 "finger_joint2",
             ]
-            sim.dofs_idx = [sim.franka.get_joint(name).dof_idx_local for name in sim.jnt_names]
+            sim.dofs_idx = [sim.franka.get_joint(name).dofs_idx_local[0] for name in sim.jnt_names]
             initial_q = np.array([0.0, 0.0, 0.0, -1.57, 0.0, 1.57, 0.785])
             with sim.joint_position_lock:
                 sim.latest_joint_positions = initial_q.copy()

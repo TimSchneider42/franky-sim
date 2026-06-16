@@ -107,7 +107,7 @@ class FrankaGenesisSim:
             "finger_joint1",
             "finger_joint2",
         ]
-        self.dofs_idx = [self.franka.get_joint(name).dof_idx_local for name in self.jnt_names]
+        self.dofs_idx = [self.franka.get_joint(name).dofs_idx_local[0] for name in self.jnt_names]
 
         # Set force range for safety
         self.franka.set_dofs_force_range(
