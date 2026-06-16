@@ -8,9 +8,9 @@ description = "A high-fidelity simulation server that implements the Franka robo
 requires-python = ">=3.8"
 dynamic = ["version"]  # Use dynamic versioning from git tags
 dependencies = [
-    "numpy==1.26.4",
-    "genesis-world==0.2.1",
-    "numba==0.60.0",
+    "numpy",
+    "genesis-world",
+    "numba",
     "torch>=2.0.0",
     "pytest"
 ]
