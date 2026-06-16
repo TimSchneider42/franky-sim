@@ -1,8 +1,5 @@
-import argparse
 import logging
-import os
 import platform
-import sys
 import threading
 import time
 from enum import Enum
@@ -44,9 +41,7 @@ class FrankaGenesisSim:
         self.ddq_filtered = np.zeros(9)
 
         # Get the Genesis assets path instead of our own
-        import genesis
-
-        genesis_path = Path(genesis.__file__).parent
+        genesis_path = Path(gs.__file__).parent
         self.xml_path = genesis_path / "assets/xml/franka_emika_panda/panda.xml"
 
         # Keep URDF path for future use if needed (for Pinocchio)
@@ -281,20 +276,3 @@ class FrankaGenesisSim:
         }
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-v", "--vis", action="store_true", default=False)
-    args = parser.parse_args()
-
-    sim = FrankaGenesisSim(enable_vis=args.vis)
-    sim.start()
-
-    try:
-        while True:
-            time.sleep(0.1)
-    except KeyboardInterrupt:
-        sim.stop()
-
-
-if __name__ == "__main__":
-    main()

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import argparse
 import enum
 import logging
 import select
@@ -8,8 +7,7 @@ import socket
 import struct
 import threading
 import time
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 from franka_sim.franka_genesis_sim import ControlMode, FrankaGenesisSim
 from franka_sim.franka_protocol import (
@@ -26,26 +24,28 @@ from franka_sim.franka_protocol import (
     SetCartesianImpedanceCommand,
     SetCollisionBehaviorCommand,
     SetJointImpedanceCommand,
+    BaseCommand,
+    GetRobotModelCommand,
+    StopMoveCommand,
+    RobotMode,
     convert_to_libfranka_controller_mode,
     convert_to_libfranka_motion_mode,
 )
+
+COMMAND_CLASS_MAP = {
+    Command.kMove: MoveCommand,
+    Command.kStopMove: StopMoveCommand,
+    Command.kSetCollisionBehavior: SetCollisionBehaviorCommand,
+    Command.kSetJointImpedance: SetJointImpedanceCommand,
+    Command.kSetCartesianImpedance: SetCartesianImpedanceCommand,
+    Command.kGetRobotModel: GetRobotModelCommand,
+}
 from franka_sim.robot_state import RobotState
 
-# Configure detailed logging for debugging
-logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-class RobotMode(enum.IntEnum):
-    """Operating modes of the Franka robot"""
 
-    kOther = 0
-    kIdle = 1
-    kMove = 2
-    kGuiding = 3
-    kReflex = 4
-    kUserStopped = 5
-    kAutomaticErrorRecovery = 6
 
 
 class FrankaSimServer:
@@ -209,6 +209,7 @@ class FrankaSimServer:
             logger.debug(f"Poller: {poller}")
             timeout = 1  # 1ms timeout
 
+            command = None
             while self.running:
                 events = poller.poll(timeout)
                 if not events:
@@ -313,16 +314,11 @@ class FrankaSimServer:
 
                         # Send TCP success response for the Move command
                         if self.current_motion_id:
-                            total_size = 12 + 4  # Header (12) + status (1) + padding (3)
-                            response_header = MessageHeader(
-                                Command.kMove, self.current_motion_id, total_size
-                            )
-                            header_bytes = response_header.to_bytes()
-                            response_data = struct.pack("<B3x", MoveStatus.kSuccess.value)
-                            self.client_socket.sendall(header_bytes + response_data)
-                            logger.info(
-                                f"Sent Move success response for motion ID: \
-                                  {self.current_motion_id}"
+                            BaseCommand.send_response(
+                                self.client_socket,
+                                Command.kMove,
+                                self.current_motion_id,
+                                MoveStatus.kSuccess,
                             )
                             self.current_motion_id = 0  # Reset motion ID after sending response
                         continue
@@ -373,276 +369,6 @@ class FrankaSimServer:
         except Exception as e:
             logger.error(f"Error in read_step: {e}")
 
-    def handle_move_command(self, client_socket, header: MessageHeader, payload: bytes) -> None:
-        """Handle Move command received over TCP"""
-        try:
-            # Parse the move command
-            try:
-                move_cmd = MoveCommand.from_bytes(payload)
-            except ValueError as e:
-                logger.error(f"Error handling Move command: {e}")
-                self.send_move_response(
-                    client_socket,
-                    command_id=header.command_id,
-                    status=MoveStatus.kInvalidArgumentRejected,
-                )
-                return
-
-            logger.info(
-                f"Received Move command: controller_mode={move_cmd.controller_mode.name}, "
-                f"motion_generator_mode={move_cmd.motion_generator_mode.name}"
-            )
-
-            # Validate controller mode
-            try:
-                ControllerMode(move_cmd.controller_mode)
-            except ValueError:
-                logger.error(
-                    f"Error handling Move command:\
-                          {move_cmd.controller_mode} is not a valid ControllerMode"
-                )
-                self.send_move_response(
-                    client_socket,
-                    command_id=header.command_id,
-                    status=MoveStatus.kInvalidArgumentRejected,
-                )
-                return
-
-            # Update robot state
-            self.robot_state.set_motion_generator_mode(
-                convert_to_libfranka_motion_mode(move_cmd.motion_generator_mode)
-            )
-            self.robot_state.set_controller_mode(
-                convert_to_libfranka_controller_mode(move_cmd.controller_mode)
-            )
-            self.robot_state.state["robot_mode"] = RobotMode.kMove
-            self.current_motion_id = header.command_id
-
-            # Set appropriate control mode in Genesis simulator
-            if (
-                move_cmd.controller_mode == ControllerMode.kJointImpedance
-                and move_cmd.motion_generator_mode == MotionGeneratorMode.kJointPosition
-            ):
-                logger.info("Setting control mode to POSITION")
-                self.genesis_sim.set_control_mode(ControlMode.POSITION)
-                self.control_mode = ControlMode.POSITION
-            elif (
-                move_cmd.controller_mode == ControllerMode.kJointImpedance
-                and move_cmd.motion_generator_mode == MotionGeneratorMode.kJointVelocity
-            ):
-                logger.info("Setting control mode to VELOCITY")
-                self.genesis_sim.set_control_mode(ControlMode.VELOCITY)
-                self.control_mode = ControlMode.VELOCITY
-            elif move_cmd.controller_mode == ControllerMode.kExternalController:
-                logger.info("Setting control mode to TORQUE")
-                self.genesis_sim.set_control_mode(ControlMode.TORQUE)
-                self.control_mode = ControlMode.TORQUE
-
-            # First send motion started response
-            logger.info("Sending kMotionStarted response")
-            self.send_move_response(
-                client_socket, command_id=header.command_id, status=MoveStatus.kMotionStarted
-            )
-            logger.info(f"Motion started with ID: {self.current_motion_id}")
-
-        except Exception as e:
-            logger.error(f"Error handling Move command: {e}")
-            # Send error response
-            self.send_move_response(
-                client_socket, command_id=header.command_id, status=MoveStatus.kAborted
-            )
-
-    def send_move_response(self, client_socket, command_id: int, status: MoveStatus):
-        """Send response to Move command"""
-        try:
-            # Total message size includes header (12 bytes) + response data (status + padding)
-            total_size = 12 + 4  # 4 = 1(status) + 3(padding)
-
-            # Construct and send header
-            header = MessageHeader(Command.kMove, command_id, total_size)
-            header_bytes = header.to_bytes()
-
-            # Construct response data (status + 3 bytes padding)
-            logger.debug(f"Sending Move response with status: {status.name} (value={status.value})")
-            # Ensure we're using the enum value, not the enum itself
-            status_value = status.value if isinstance(status, MoveStatus) else status
-            response_data = struct.pack("<B3x", status_value)
-
-            # Send complete message
-            message = header_bytes + response_data
-            logger.debug(f"Sending Move response message: {message.hex()}")
-            client_socket.sendall(message)
-            logger.info(f"Sent Move response: command_id={command_id}, status={status.name}")
-        except Exception as e:
-            logger.error(f"Error sending Move response: {e}", exc_info=True)
-
-    def handle_stop_move_command(self, client_socket, header: MessageHeader):
-        """Handle StopMove command received over TCP"""
-        try:
-            logger.info("Processing StopMove command")
-
-            # Send success response for StopMove first
-            total_size = 12 + 4  # Header (12) + status (1) + padding (3)
-            response_header = MessageHeader(Command.kStopMove, header.command_id, total_size)
-            header_bytes = response_header.to_bytes()
-
-            # Status 0 = Success
-            response_data = struct.pack("<B3x", 0)  # 1 byte status + 3 bytes padding
-
-            client_socket.sendall(header_bytes + response_data)
-            logger.info("Sent StopMove success response")
-
-            # Switch to position control and hold current position
-            if self.control_mode != ControlMode.POSITION:
-                logger.info("Switching to position control mode and holding current position")
-                current_joint_positions = self.genesis_sim.get_robot_state()["q"]
-                self.genesis_sim.set_control_mode(ControlMode.POSITION)
-                self.control_mode = ControlMode.POSITION
-                self.genesis_sim.update_joint_positions(current_joint_positions)
-                self.genesis_sim.update_torques([0.0] * 7)
-
-            # Send one final state with both modes set to idle
-            if hasattr(self, "udp_socket") and self.udp_socket:
-                # Update state to idle modes
-                self.robot_state.state["motion_generator_mode"] = 0  # kNone
-                self.robot_state.state["controller_mode"] = 3  # kOther
-                self.robot_state.state["robot_mode"] = RobotMode.kIdle
-
-                # Send state with new message ID
-                self.robot_state.update()  # This increments message_id
-                final_state = self.robot_state.pack_state()
-                self.udp_socket.sendto(final_state, (self.client_address, self.client_udp_port))
-                logger.info(
-                    f"Sent final robot state with message_id:\
-                          {self.robot_state.state['message_id']}"
-                )
-
-            # Stop robot state transmission
-            self.transmitting_state = False
-            logger.info("Stopped robot state transmission")
-
-            # Send Move response to break the waiting loop in the client
-            if self.current_motion_id:
-                # Create a Move response header
-                move_response_header = MessageHeader(Command.kMove, self.current_motion_id, 16)
-                move_header_bytes = move_response_header.to_bytes()
-                move_response_data = struct.pack("<B3x", MoveStatus.kSuccess)
-                client_socket.sendall(move_header_bytes + move_response_data)
-                logger.info(f"Sent Move success response for motion ID: {self.current_motion_id}")
-                self.current_motion_id = 0
-
-            # Set connection_running to False instead of self.running
-            self.connection_running = False
-
-        except Exception as e:
-            logger.error(f"Error handling StopMove command: {e}")
-            # Send error response
-            total_size = 12 + 4
-            response_header = MessageHeader(Command.kStopMove, header.command_id, total_size)
-            header_bytes = response_header.to_bytes()
-            response_data = struct.pack("<B3x", 5)  # Status 5 = Aborted
-            client_socket.sendall(header_bytes + response_data)
-
-    def handle_set_collision_behavior_command(
-        self, client_socket, header: MessageHeader, payload: bytes
-    ):
-        """Handle SetCollisionBehavior command received over TCP"""
-        try:
-            # Parse the command
-            cmd = SetCollisionBehaviorCommand.from_bytes(payload)
-            logger.info("Received SetCollisionBehavior command with values:")
-            logger.debug(f"Lower torque thresholds acc: {cmd.lower_torque_thresholds_acceleration}")
-            logger.debug(f"Upper torque thresholds acc: {cmd.upper_torque_thresholds_acceleration}")
-
-            # For now, just acknowledge the command without actually implementing behavior
-            # Send success response (status = 0)
-            total_size = 12 + 4  # Header (12) + status (1) + padding (3)
-            response_header = MessageHeader(
-                Command.kSetCollisionBehavior, header.command_id, total_size
-            )
-            header_bytes = response_header.to_bytes()
-            response_data = struct.pack("<B3x", 0)  # 1 byte status + 3 bytes padding
-
-            client_socket.sendall(header_bytes + response_data)
-            logger.info("Sent SetCollisionBehavior success response")
-
-        except Exception as e:
-            logger.error(f"Error handling SetCollisionBehavior command: {e}")
-            # Send error response (status = 1)
-            total_size = 12 + 4
-            response_header = MessageHeader(
-                Command.kSetCollisionBehavior, header.command_id, total_size
-            )
-            header_bytes = response_header.to_bytes()
-            response_data = struct.pack("<B3x", 1)  # Status 1 = Error
-            client_socket.sendall(header_bytes + response_data)
-
-    def handle_set_joint_impedance_command(
-        self, client_socket, header: MessageHeader, payload: bytes
-    ):
-        """Handle SetJointImpedance command received over TCP"""
-        try:
-            # Parse the command
-            cmd = SetJointImpedanceCommand.from_bytes(payload)
-            logger.info("Received SetJointImpedance command with values:")
-            logger.debug(f"Joint stiffness values: {cmd.K_theta}")
-
-            # For now, just acknowledge the command without actually implementing behavior
-            # Send success response (status = 0)
-            total_size = 12 + 4  # Header (12) + status (1) + padding (3)
-            response_header = MessageHeader(
-                Command.kSetJointImpedance, header.command_id, total_size
-            )
-            header_bytes = response_header.to_bytes()
-            response_data = struct.pack("<B3x", 0)  # 1 byte status + 3 bytes padding
-
-            client_socket.sendall(header_bytes + response_data)
-            logger.info("Sent SetJointImpedance success response")
-
-        except Exception as e:
-            logger.error(f"Error handling SetJointImpedance command: {e}")
-            # Send error response (status = 1)
-            total_size = 12 + 4
-            response_header = MessageHeader(
-                Command.kSetJointImpedance, header.command_id, total_size
-            )
-            header_bytes = response_header.to_bytes()
-            response_data = struct.pack("<B3x", 1)  # Status 1 = Error
-            client_socket.sendall(header_bytes + response_data)
-
-    def handle_set_cartesian_impedance_command(
-        self, client_socket, header: MessageHeader, payload: bytes
-    ):
-        """Handle SetCartesianImpedance command received over TCP"""
-        try:
-            # Parse the command
-            cmd = SetCartesianImpedanceCommand.from_bytes(payload)
-            logger.info("Received SetCartesianImpedance command with values:")
-            logger.debug(f"Cartesian stiffness values: {cmd.K_x}")
-
-            # For now, just acknowledge the command without actually implementing behavior
-            # Send success response (status = 0)
-            total_size = 12 + 4  # Header (12) + status (1) + padding (3)
-            response_header = MessageHeader(
-                Command.kSetCartesianImpedance, header.command_id, total_size
-            )
-            header_bytes = response_header.to_bytes()
-            response_data = struct.pack("<B3x", 0)  # 1 byte status + 3 bytes padding
-
-            client_socket.sendall(header_bytes + response_data)
-            logger.info("Sent SetCartesianImpedance success response")
-
-        except Exception as e:
-            logger.error(f"Error handling SetCartesianImpedance command: {e}")
-            # Send error response (status = 1)
-            total_size = 12 + 4
-            response_header = MessageHeader(
-                Command.kSetCartesianImpedance, header.command_id, total_size
-            )
-            header_bytes = response_header.to_bytes()
-            response_data = struct.pack("<B3x", 1)  # Status 1 = Error
-            client_socket.sendall(header_bytes + response_data)
-
     def handle_tcp_messages(self, client_socket):
         """Handle TCP messages in a separate thread"""
         logger.info("TCP message handler thread started")
@@ -670,22 +396,10 @@ class FrankaSimServer:
                     f"Processing command: {Command(header.command).name} (ID: {header.command_id})"
                 )
 
-                if header.command == Command.kMove:
-                    logger.debug(f"Move command payload size: {len(payload)} bytes")
-                    logger.debug(f"Move command payload hex: {payload.hex()}")
-                    self.handle_move_command(client_socket, header, payload)
-                elif header.command == Command.kStopMove:
-                    logger.info("Handling StopMove command")
-                    self.handle_stop_move_command(client_socket, header)
-                elif header.command == Command.kSetCollisionBehavior:
-                    logger.info("Handling SetCollisionBehavior command")
-                    self.handle_set_collision_behavior_command(client_socket, header, payload)
-                elif header.command == Command.kSetJointImpedance:
-                    logger.info("Handling SetJointImpedance command")
-                    self.handle_set_joint_impedance_command(client_socket, header, payload)
-                elif header.command == Command.kSetCartesianImpedance:
-                    logger.info("Handling SetCartesianImpedance command")
-                    self.handle_set_cartesian_impedance_command(client_socket, header, payload)
+                command_class = COMMAND_CLASS_MAP.get(header.command)
+                if command_class:
+                    cmd = command_class.from_bytes(payload or b"", header.command_id, client_socket)
+                    cmd.handle(self)
                 else:
                     logger.warning(
                         f"Unhandled command in TCP thread: {Command(header.command).name}"
@@ -834,10 +548,11 @@ class FrankaSimServer:
 
                     # After first state is sent, send a Move success response
                     if not first_state_sent and self.current_motion_id:
-                        self.send_move_response(
+                        BaseCommand.send_response(
                             self.client_socket,
-                            command_id=self.current_motion_id,
-                            status=MoveStatus.kSuccess,
+                            Command.kMove,
+                            self.current_motion_id,
+                            MoveStatus.kSuccess,
                         )
                         first_state_sent = True
 
@@ -988,10 +703,10 @@ class FrankaSimServer:
 
         except Exception as e:
             logger.error(f"Server start error: {e}", exc_info=True)
-            self.cleanup()
+            self._cleanup()
             raise
 
-    def cleanup(self):
+    def _cleanup(self):
         """Clean up all resources"""
         logger.info("Cleaning up server resources...")
 
@@ -1057,29 +772,15 @@ class FrankaSimServer:
         self.running = False
         self.connection_running = False
         self.transmitting_state = False
-        self.cleanup()
+        self._cleanup()
         # Stop Genesis simulator
         self.genesis_sim.stop()
 
+    def __enter__(self):
+        self.start()
+        return self
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-v",
-        "--vis",
-        action="store_true",
-        default=False,
-        help="Enable visualization of the Genesis simulator",
-    )
-    args = parser.parse_args()
-
-    server = FrankaSimServer(enable_vis=args.vis)
-    try:
-        server.start()
-    except KeyboardInterrupt:
-        logger.info("Shutting down server...")
-        server.stop()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
 
 
-if __name__ == "__main__":
-    main()
