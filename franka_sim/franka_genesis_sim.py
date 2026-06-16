@@ -48,7 +48,7 @@ class FrankaGenesisSim:
         # This is currently unused, but kept for reference
         current_dir = Path(__file__).parent
         assets_dir = current_dir.parent / "assets"
-        self.urdf_path = assets_dir / "urdf/panda_bullet/panda.urdf"
+        self.urdf_path = assets_dir / "fr3.urdf"
 
         logger.info(f"Using Genesis XML path: {self.xml_path}")
 

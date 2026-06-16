@@ -156,15 +156,15 @@ class BaseCommand:
 
     command_type: typing.ClassVar[Command]
 
-    def reply(self, status: typing.Union[enum.IntEnum, int]) -> None:
-        """Send a standard command response with status and padding."""
-        self.send_response(self.client_socket, self.command_type, self.command_id, status)
+    def reply(self, status: typing.Union[enum.IntEnum, int], payload: bytes = b"") -> None:
+        """Send a standard command response with status, padding, and an optional payload."""
+        self.send_response(self.client_socket, self.command_type, self.command_id, status, payload)
 
     @classmethod
-    def send_response(cls, client_socket: 'socket.socket', command_type: Command, command_id: int, status: typing.Union[enum.IntEnum, int]) -> None:
-        """Send a standard command response with status and padding without instantiating a command."""
+    def send_response(cls, client_socket: 'socket.socket', command_type: Command, command_id: int, status: typing.Union[enum.IntEnum, int], payload: bytes = b"") -> None:
+        """Send a standard command response with status, padding, and an optional payload without instantiating a command."""
         try:
-            total_size = 12 + 4  # Header (12) + status (1) + padding (3)
+            total_size = 12 + 1 + len(payload)  # Header (12) + status (1) + payload
             header = MessageHeader(command_type, command_id, total_size)
             header_bytes = header.to_bytes()
 
@@ -172,10 +172,13 @@ class BaseCommand:
             status_value = status.value if hasattr(status, "value") else status
             
             logger.debug(f"Sending {command_type.name} response with status: {status_name} (value={status_value})")
-            response_data = struct.pack("<B3x", status_value)
+            response_data = struct.pack("<B", status_value)
 
-            message = header_bytes + response_data
-            logger.debug(f"Sending {command_type.name} response message: {message.hex()}")
+            message = header_bytes + response_data + payload
+            if not payload:
+                logger.debug(f"Sending {command_type.name} response message: {message.hex()}")
+            else:
+                logger.debug(f"Sending {command_type.name} response message with {len(payload)} bytes payload")
             client_socket.sendall(message)
             logger.info(f"Sent {command_type.name} response: command_id={command_id}, status={status_name}")
         except Exception as e:
@@ -472,8 +475,10 @@ class GetRobotModelCommand(BaseCommand):
 
     def handle(self, server: 'FrankaSimServer'):
         try:
-            logger.warning("GetRobotModel command is not yet implemented. Returning error response.")
-            self.reply(1)
+            urdf_path = server.genesis_sim.urdf_path
+            with open(urdf_path, "rb") as f:
+                robot_model_bytes = f.read()
+            self.reply(0, payload=robot_model_bytes)
         except Exception as e:
             logger.error(f"Error handling GetRobotModel command: {e}")
             # Send error response (status = 1)
