@@ -672,7 +672,7 @@ class FrankaSimServer:
             logger.error(f"Server start error: {e}", exc_info=True)
             self.running = False
         finally:
-            self.cleanup()
+            self._cleanup()
 
     def start(self):
         """Start the TCP server and Genesis simulator"""
