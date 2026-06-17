@@ -2,12 +2,12 @@
 import argparse
 import logging
 
-from franka_sim import FrankaSimServer
+from franka_sim.franka_genesis_sim import FrankaGenesisSim
+from franka_sim.franka_sim_server import FrankaSimServer
 
 
-def main():
+def main() -> None:
     """Run the Franka simulation server."""
-    # get command line arguments visualization
     parser = argparse.ArgumentParser(description="Run a Franka simulation server")
     parser.add_argument(
         "-v",
@@ -23,7 +23,7 @@ def main():
 
     # Configure detailed logging for debugging
     logging.basicConfig(
-        level=logging.INFO if args.verbose else logging.WARNING,
+        level=logging.DEBUG if args.verbose else logging.WARNING,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
@@ -34,12 +34,20 @@ def main():
     print("Connect to the server using 'localhost' or '127.0.0.1' as the robot IP address")
     print("Press Ctrl+C to stop the server")
 
-    server = FrankaSimServer(enable_vis=args.vis)
+    # Create the simulation
+    sim = FrankaGenesisSim(enable_vis=args.vis)
+    sim.start()
+
+    # Start the server with the simulation
+    server = FrankaSimServer(sim=sim)
+    server.start()
+
     try:
-        server.start()
+        server.run_forever()
     except KeyboardInterrupt:
         print("\nShutting down server...")
-        server.stop()
+    finally:
+        sim.stop()
 
 
 if __name__ == "__main__":

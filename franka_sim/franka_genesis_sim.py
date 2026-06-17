@@ -1,54 +1,33 @@
 import logging
-import platform
-import threading
-import time
-from enum import Enum
 from pathlib import Path
 
 import genesis as gs
 import numpy as np
+
+from .simulation_interface import ControlMode, SimulationInterface
 
 # import pinocchio as pin
 
 logger = logging.getLogger(__name__)
 
 
-class ControlMode(Enum):
-    POSITION = "position"
-    VELOCITY = "velocity"
-    TORQUE = "torque"
-    NONE = "none"
-
-
-class FrankaGenesisSim:
-    def __init__(self, enable_vis=False):
+class FrankaGenesisSim(SimulationInterface):
+    def __init__(self, enable_vis: bool = False) -> None:
         self.enable_vis = enable_vis
-        self.scene = None
-        self.franka = None
+        self.scene: gs.Scene = None
+        self.franka: gs.Entity = None
         self.model = None
         self.data = None
-        self.running = False
-        self.latest_torques = np.zeros(7)
-        self.latest_joint_positions = np.zeros(7)
-        self.latest_joint_velocities = np.zeros(7)
-        self.torque_lock = threading.Lock()
-        self.joint_position_lock = threading.Lock()
-        self.joint_velocity_lock = threading.Lock()
-        self.control_mode = ControlMode.POSITION  # Default to position control
-        self.control_mode_lock = threading.Lock()
-        self.dt = 0.01  # Simulation timestep
-        self.sim_thread = None
-        self.ddq_filtered = np.zeros(9)
+        self.latest_torques: np.ndarray = np.zeros(7)
+        self.latest_joint_positions: np.ndarray = np.zeros(7)
+        self.latest_joint_velocities: np.ndarray = np.zeros(7)
+        self.dt: float = 0.001  # Simulation timestep
+        self.ddq_filtered: np.ndarray = np.zeros(9)
+        self.prev_dq_full: np.ndarray = np.zeros(9)
 
         # Get the Genesis assets path instead of our own
         genesis_path = Path(gs.__file__).parent
         self.xml_path = genesis_path / "assets/xml/franka_emika_panda/panda.xml"
-
-        # Keep URDF path for future use if needed (for Pinocchio)
-        # This is currently unused, but kept for reference
-        current_dir = Path(__file__).parent
-        assets_dir = current_dir.parent / "assets"
-        self.urdf_path = assets_dir / "fr3.urdf"
 
         logger.info(f"Using Genesis XML path: {self.xml_path}")
 
@@ -119,115 +98,59 @@ class FrankaGenesisSim:
         # Initialize to default position
         initial_q = np.array([0.0, 0.0, 0.0, -1.57, 0.0, 1.57, 0.785])
         # Set the initial position as the target position for the controller
-        with self.joint_position_lock:
-            self.latest_joint_positions = initial_q.copy()
+        self.latest_joint_positions = initial_q.copy()
 
         for _ in range(100):
             self.franka.set_dofs_position(np.concatenate([initial_q, [0.04, 0.04]]), self.dofs_idx)
             self.scene.step()
 
-    def set_control_mode(self, mode: ControlMode):
-        """Set the control mode for the robot"""
-        if not isinstance(mode, ControlMode):
-            raise ValueError(f"Mode must be a ControlMode enum, got {type(mode)}")
+    def step(self, control_mode: ControlMode, control_signal: np.ndarray) -> None:
+        """Advance the simulation by one timestep"""
+        if not self.scene:
+            raise RuntimeError("Simulation has not been started. Please call start() first.")
 
-        with self.control_mode_lock:
-            logger.info(f"Switching control mode to: {mode.value}")
-            self.control_mode = mode
+        # Get current joint states for derivative calculations
+        q_full = self.franka.get_dofs_position(self.dofs_idx).cpu().numpy()
+        dq_full = self.franka.get_dofs_velocity(self.dofs_idx).cpu().numpy()
 
-    def update_torques(self, torques):
-        """Update the latest torques to be applied in simulation"""
-        with self.torque_lock:
-            self.latest_torques = np.array(torques)
-
-    def update_joint_positions(self, positions):
-        """Update the latest joint positions to be applied in simulation"""
-        with self.joint_position_lock:
-            self.latest_joint_positions = np.array(positions)
-
-    def update_joint_velocities(self, velocities):
-        """Update the latest joint velocities to be applied in simulation"""
-        with self.joint_velocity_lock:
-            self.latest_joint_velocities = np.array(velocities)
-
-    def run_simulation(self):
-        """Main simulation loop"""
-        logger.info("Starting Genesis simulation loop")
-
-        # For numerical differentiation
-        self.prev_dq_full = np.zeros(9)
-        self.ddq_filtered = np.zeros(9)
+        # Calculate acceleration
+        ddq_raw = (dq_full - self.prev_dq_full) / self.dt
         alpha_acc = 0.95
+        self.ddq_filtered = alpha_acc * self.ddq_filtered + (1 - alpha_acc) * ddq_raw
+        self.prev_dq_full = dq_full.copy()
 
-        while self.running:
-            # Get current joint states
-            q_full = self.franka.get_dofs_position(self.dofs_idx).cpu().numpy()
-            dq_full = self.franka.get_dofs_velocity(self.dofs_idx).cpu().numpy()
+        # Update our latest stored command and apply to franka
+        if control_mode == ControlMode.POSITION:
+            self.latest_joint_positions = np.array(control_signal)
+            q_cmd = np.concatenate([self.latest_joint_positions, [0.04, 0.04]])
+            self.franka.control_dofs_position(q_cmd, self.dofs_idx)
+        elif control_mode == ControlMode.VELOCITY:
+            self.latest_joint_velocities = np.array(control_signal)
+            dq_cmd = np.concatenate([self.latest_joint_velocities, [0.0, 0.0]])
+            self.franka.control_dofs_velocity(dq_cmd, self.dofs_idx)
+        elif control_mode == ControlMode.TORQUE:
+            self.latest_torques = np.array(control_signal)
+            tau_cmd = np.concatenate([self.latest_torques, [0.0, 0.0]])
+            self.franka.control_dofs_force(tau_cmd, self.dofs_idx)
 
-            # Calculate acceleration
-            ddq_raw = (dq_full - self.prev_dq_full) / self.dt
-            self.ddq_filtered = alpha_acc * self.ddq_filtered + (1 - alpha_acc) * ddq_raw
-            self.prev_dq_full = dq_full.copy()
+        # Step simulation
+        self.scene.step()
 
-            # Get current control mode
-            with self.control_mode_lock:
-                current_mode = self.control_mode
-
-            # Apply control based on mode
-            if current_mode == ControlMode.POSITION:
-                with self.joint_position_lock:
-                    q_d = self.latest_joint_positions.copy()
-                q_cmd = np.concatenate([q_d, [0.04, 0.04]])
-                self.franka.control_dofs_position(q_cmd, self.dofs_idx)
-
-            elif current_mode == ControlMode.VELOCITY:
-                with self.joint_velocity_lock:
-                    dq_d = self.latest_joint_velocities.copy()
-                dq_cmd = np.concatenate([dq_d, [0.0, 0.0]])
-                self.franka.control_dofs_velocity(dq_cmd, self.dofs_idx)
-
-            elif current_mode == ControlMode.TORQUE:
-                with self.torque_lock:
-                    tau_d = self.latest_torques.copy()
-                tau_cmd = np.concatenate([tau_d, [0.0, 0.0]])
-                self.franka.control_dofs_force(tau_cmd, self.dofs_idx)
-
-            # Step simulation
-            self.scene.step()
-
-            # Optional: Add small sleep to prevent too high CPU usage
-            time.sleep(0.001)
-
-        if self.enable_vis:
-            self.scene.viewer.stop()
-
-    def start(self):
+    def start(self) -> None:
         """Start the simulation"""
         if not self.scene:
             self.initialize_simulation()
 
-        self.running = True
-
-        if self.enable_vis:
-            # Run simulation in a separate thread when visualization is enabled
-            # if macos, run in a separate thread
-            if platform.system() == "Darwin" and platform.machine() == "arm64":
-                gs.tools.run_in_another_thread(fn=self.run_simulation, args=())
-            else:
-                self.run_simulation()
-            # Run viewer in main thread
-            self.scene.viewer.start()
-        else:
-            # Without visualization, just run simulation in current thread
-            self.run_simulation()
-
-    def stop(self):
+    def stop(self) -> None:
         """Stop the simulation"""
-        self.running = False
-        if self.enable_vis:
-            self.scene.viewer.stop()
-        if self.sim_thread:
-            self.sim_thread.join(timeout=1.0)  # Wait for simulation thread to finish
+        pass
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
 
     def get_robot_state(self):
         """Get current robot state for network transmission"""
@@ -274,5 +197,3 @@ class FrankaGenesisSim:
             "tau_J": self.latest_torques,  # Current commanded torques
             "O_T_EE": O_T_EE,  # End-effector pose in base frame (column-major)
         }
-
-
