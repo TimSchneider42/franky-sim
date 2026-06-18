@@ -20,16 +20,16 @@ The Franka Simulation Server provides a drop-in replacement for the real Franka 
 
 - Native libfranka control
 
-![Libfranka Native Control](./assets/direct_libfranka_control.gif)
+![Libfranka Native Control](./doc/direct_libfranka_control.gif)
 
 - With Python
 
-![With Python](./assets/libfranka_python_bindings_control.gif)
+![With Python](./doc/libfranka_python_bindings_control.gif)
 
 
 ## Architecture
 
-![Architecture](./assets/libfranka_sim.svg)
+![Architecture](./doc/libfranka_sim.svg)
 
 In this repository, we only provide the simulation server backend with Genesis connection.
 
