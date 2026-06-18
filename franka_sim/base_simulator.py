@@ -36,20 +36,22 @@ class BaseRobot(ABC):
     """
 
     def __init__(
-            self,
-            ee_frame_name: str = "fr3_link8",
-            kp: np.ndarray | None = None,
-            kv: np.ndarray | None = None,
-            gravity: tuple[float, float, float] = (0.0, 0.0, -9.81),
-            ee_mass: float = 0.73,
-            ee_com: tuple[float, float, float] = (-0.01, 0.0, 0.03),
-            ee_tcp_xyz: tuple[float, float, float] = (0.0, 0.0, 0.1034),
-            ee_tcp_rpy: tuple[float, float, float] = (0.0, 0.0, -np.pi / 4),
-            ee_inertia: tuple[float, float, float] = (0.001, 0.0025, 0.0017),
+        self,
+        ee_frame_name: str = "fr3_link8",
+        kp: np.ndarray | None = None,
+        kv: np.ndarray | None = None,
+        gravity: tuple[float, float, float] = (0.0, 0.0, -9.81),
+        ee_mass: float = 0.73,
+        ee_com: tuple[float, float, float] = (-0.01, 0.0, 0.03),
+        ee_tcp_xyz: tuple[float, float, float] = (0.0, 0.0, 0.1034),
+        ee_tcp_rpy: tuple[float, float, float] = (0.0, 0.0, -np.pi / 4),
+        ee_inertia: tuple[float, float, float] = (0.001, 0.0025, 0.0017),
     ):
         self.ee_frame_name = ee_frame_name
         self.tcp_frame_name = "tcp"
-        self.model = pin.buildModelFromUrdf(str(Path(__file__).parent / "assets" / "fr3_clean.urdf"))
+        self.model = pin.buildModelFromUrdf(
+            str(Path(__file__).parent / "assets" / "fr3_clean.urdf")
+        )
 
         # Add End-Effector properties to the model
         if self.model.existFrame(self.ee_frame_name):
@@ -63,8 +65,13 @@ class BaseRobot(ABC):
 
             # 2. Add TCP Frame
             tcp_placement = pin.SE3(pin.rpy.rpyToMatrix(*ee_tcp_rpy), np.array(ee_tcp_xyz))
-            tcp_frame = pin.Frame(self.tcp_frame_name, joint_id, frame_id, frame.placement * tcp_placement,
-                                  pin.FrameType.OP_FRAME)
+            tcp_frame = pin.Frame(
+                self.tcp_frame_name,
+                joint_id,
+                frame_id,
+                frame.placement * tcp_placement,
+                pin.FrameType.OP_FRAME,
+            )
             self.model.addFrame(tcp_frame)
         else:
             self.tcp_frame_name = self.ee_frame_name
@@ -141,7 +148,9 @@ class BaseRobot(ABC):
         else:
             frame_id = self.model.nframes - 1
 
-        J = pin.computeFrameJacobian(self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
+        J = pin.computeFrameJacobian(
+            self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
+        )
 
         current_pose = self.data.oMf[frame_id]
         target_se3 = pin.XYZQUATToSE3(target_pose)
@@ -168,7 +177,9 @@ class BaseRobot(ABC):
         else:
             frame_id = self.model.nframes - 1
 
-        J = pin.computeFrameJacobian(self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
+        J = pin.computeFrameJacobian(
+            self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
+        )
 
         tau = J.T @ (self.kv * (target_vel - J @ dq)) + self.data.nle
         self.torque_control(tau)

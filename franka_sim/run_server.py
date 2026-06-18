@@ -4,8 +4,8 @@ from __future__ import annotations
 import argparse
 import logging
 
-from .genesis import SimpleFrankaGenesisSim
 from .franka_sim_server import FrankaSimServer
+from .genesis import SimpleFrankaGenesisSim
 
 
 def main() -> None:

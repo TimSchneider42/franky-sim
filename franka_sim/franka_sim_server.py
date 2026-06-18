@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import logging
@@ -9,6 +8,7 @@ import time
 from typing import Optional
 
 import numpy as np
+import pinocchio as pin
 
 from .base_simulator import BaseRobot, BaseSimulator, ControlMode
 from .franka_protocol import (
@@ -255,12 +255,13 @@ class FrankaRobotServer:
             elif self.control_mode == ControlMode.VELOCITY:
                 self.robot.joint_velocity_control(np.array(self.current_control_signal))
             elif self.control_mode == ControlMode.CARTESIAN_POSITION:
-                import pinocchio as pin
                 mat = np.array(self.current_control_signal).reshape((4, 4), order="F")
                 translation = mat[:3, 3]
                 rotation = mat[:3, :3]
                 quat = pin.Quaternion(rotation)
-                target_pose = np.array([translation[0], translation[1], translation[2], quat.x, quat.y, quat.z, quat.w])
+                target_pose = np.array(
+                    [translation[0], translation[1], translation[2], quat.x, quat.y, quat.z, quat.w]
+                )
                 self.robot.cartesian_position_control(target_pose)
             elif self.control_mode == ControlMode.CARTESIAN_VELOCITY:
                 self.robot.cartesian_velocity_control(np.array(self.current_control_signal))
@@ -432,7 +433,9 @@ class FrankaRobotServer:
                 ):
                     if self.control_mode != ControlMode.CARTESIAN_POSITION:
                         self.control_mode = ControlMode.CARTESIAN_POSITION
-                        self.robot_state = self.robot_state.replace(O_T_EE_d=self.robot_state.O_T_EE)
+                        self.robot_state = self.robot_state.replace(
+                            O_T_EE_d=self.robot_state.O_T_EE
+                        )
                     self.robot_state = self.robot_state.replace(O_T_EE_d=tuple(O_T_EE_c))
                     self.current_control_signal = list(O_T_EE_c)
                 elif (
@@ -456,16 +459,18 @@ class FrankaRobotServer:
             # since it's an important part of the state. We'll use the one from robot if available,
             # else compute here.
             O_T_EE = self.robot_state.O_T_EE
-            if hasattr(self.robot, "model") and hasattr(self.robot, "data"):
-                import pinocchio as pin
-
-                q = np.array(base_state.q)
-                pin.forwardKinematics(self.robot.model, self.robot.data, q)
-                if self.robot.model.existFrame(self.robot.ee_frame_name):
-                    frame_id = self.robot.model.getFrameId(self.robot.ee_frame_name)
-                    pin.updateFramePlacement(self.robot.model, self.robot.data, frame_id)
-                    pose = self.robot.data.oMf[frame_id].homogeneous
-                    O_T_EE = tuple(pose.flatten(order="F"))  # Column major
+            q = np.array(base_state.q)
+            if self.robot.model.nq > len(q):
+                q_pin = np.zeros(self.robot.model.nq)
+                q_pin[: len(q)] = q
+            else:
+                q_pin = q
+            pin.forwardKinematics(self.robot.model, self.robot.data, q_pin)
+            if self.robot.model.existFrame(self.robot.ee_frame_name):
+                frame_id = self.robot.model.getFrameId(self.robot.ee_frame_name)
+                pin.updateFramePlacement(self.robot.model, self.robot.data, frame_id)
+                pose = self.robot.data.oMf[frame_id].homogeneous
+                O_T_EE = tuple(pose.flatten(order="F"))  # Column major
 
             kwargs = {
                 "q": base_state.q,

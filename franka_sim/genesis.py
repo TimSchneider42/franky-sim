@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 
 class FrankaGenesisRobot(BaseRobot):
     def __init__(
-            self,
-            scene: gs.Scene,
-            franka: gs.Entity,
-            gravity: tuple[float, float, float] = (0.0, 0.0, -9.81),
+        self,
+        scene: gs.Scene,
+        franka: gs.Entity,
+        gravity: tuple[float, float, float] = (0.0, 0.0, -9.81),
     ):
         super().__init__("fr3_link8", gravity=gravity)
 
@@ -61,7 +61,7 @@ class FrankaGenesisRobot(BaseRobot):
 
 class SimpleFrankaGenesisSim(BaseSimulator):
     def __init__(
-            self, enable_vis: bool = False, gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
+        self, enable_vis: bool = False, gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     ) -> None:
         super().__init__()
         self.enable_vis = enable_vis
@@ -73,7 +73,11 @@ class SimpleFrankaGenesisSim(BaseSimulator):
         self.urdf_path = Path(__file__).parent / "assets" / "fr3.urdf"
 
     def _init(self) -> None:
-        gs.init()
+        try:
+            gs.init()
+        except gs.GenesisException as e:
+            if "Genesis already initialized" not in str(e):
+                raise e
 
         self.scene = gs.Scene(
             viewer_options=gs.options.ViewerOptions(
@@ -111,14 +115,14 @@ class SimpleFrankaGenesisSim(BaseSimulator):
         self.robot.latest_joint_positions = initial_q.copy()
 
         for _ in range(100):
-            self.franka.set_dofs_position(
-                initial_q, self.robot.dofs_idx
-            )
+            self.franka.set_dofs_position(initial_q, self.robot.dofs_idx)
             self.scene.step()
 
     def _cleanup(self) -> None:
-        gs.destroy()
-        self.scene.destroy()
+        try:
+            self.scene.destroy()
+        except Exception:
+            pass
 
     def _get_robots(self) -> list[BaseRobot]:
         return [self.robot]
