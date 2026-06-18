@@ -44,9 +44,6 @@ def test_successful_handshake(tcp_client, sim_server, mock_genesis_sim):
     # Wait a bit for UDP transmission to start
     time.sleep(0.1)
 
-    # Verify mock simulator was used
-    mock_genesis_sim.get_robot_state.assert_called()
-
 
 @pytest.mark.skip(reason="Version check feature disabled")
 def test_incompatible_version(tcp_client, sim_server, mock_genesis_sim):

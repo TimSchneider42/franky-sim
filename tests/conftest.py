@@ -44,8 +44,32 @@ def wait_for_server(port, max_retries=20, retry_delay=0.2):
 @pytest.fixture
 def mock_genesis_sim():
     """Fixture that provides a mocked Genesis simulator"""
+    mock_robot = Mock()
+    # MOCK_ROBOT_STATE is a dict in old code, we might need a mock RobotState
+    from pathlib import Path
+
+    import pinocchio as pin
+
+    from franka_sim.robot_state import FrankaRobotState
+
+    mock_state = FrankaRobotState()
+    mock_robot.state = mock_state
+
+    # Load real pinocchio model to avoid C++ argument matching errors
+    urdf_path = Path(__file__).parent.parent / "franka_sim" / "assets" / "fr3.urdf"
+    if urdf_path.exists():
+        mock_robot.model = pin.buildModelFromUrdf(str(urdf_path))
+        mock_robot.data = mock_robot.model.createData()
+        mock_robot.ee_frame_name = "fr3_hand_tcp"
+    else:
+        # Fallback to a dummy model if URDF doesn't exist
+        mock_robot.model = pin.Model()
+        mock_robot.data = pin.Data(mock_robot.model)
+        mock_robot.ee_frame_name = "dummy_frame"
+
     mock_sim = Mock()
-    mock_sim.get_robot_state.return_value = MOCK_ROBOT_STATE
+    mock_sim.robots = [mock_robot]
+    mock_sim.get_robots.return_value = [mock_robot]
     return mock_sim
 
 
@@ -64,12 +88,13 @@ def sim_server(mock_genesis_sim):
 
     from franka_sim.franka_sim_server import FrankaSimServer
 
-    server = FrankaSimServer(enable_vis=False, genesis_sim=mock_genesis_sim)
-    server_thread = threading.Thread(target=server.run_server)
+    server = FrankaSimServer(sim=mock_genesis_sim)
+    server_thread = threading.Thread(target=server.run_forever)
     server_thread.daemon = True
 
     try:
         logger.info("Starting server thread...")
+        server.start()
         server_thread.start()
         logger.info("Waiting for server to start...")
 
@@ -87,8 +112,6 @@ def sim_server(mock_genesis_sim):
         try:
             # Make sure the server is stopped properly
             server.running = False
-            server.connection_running = False
-            server.transmitting_state = False
 
             # Stop the server (which calls cleanup)
             server.stop()
@@ -98,34 +121,35 @@ def sim_server(mock_genesis_sim):
                 server_thread.join(timeout=3.0)
 
             # Additional socket cleanup - with better error handling
-            if hasattr(server, "client_socket") and server.client_socket is not None:
-                try:
-                    server.client_socket.shutdown(socket.SHUT_RDWR)
-                except (socket.error, AttributeError) as e:
-                    logger.debug(f"Error during client socket shutdown: {e}")
-                try:
-                    server.client_socket.close()
-                except (socket.error, AttributeError) as e:
-                    logger.debug(f"Error during client socket close: {e}")
-                server.client_socket = None
+            for rs in server.robot_servers:
+                if hasattr(rs, "client_socket") and rs.client_socket is not None:
+                    try:
+                        rs.client_socket.shutdown(socket.SHUT_RDWR)
+                    except (socket.error, AttributeError) as e:
+                        logger.debug(f"Error during client socket shutdown: {e}")
+                    try:
+                        rs.client_socket.close()
+                    except (socket.error, AttributeError) as e:
+                        logger.debug(f"Error during client socket close: {e}")
+                    rs.client_socket = None
 
-            if hasattr(server, "udp_socket") and server.udp_socket is not None:
-                try:
-                    server.udp_socket.close()
-                except (socket.error, AttributeError) as e:
-                    logger.debug(f"Error during UDP socket close: {e}")
-                server.udp_socket = None
+                if hasattr(rs, "udp_socket") and rs.udp_socket is not None:
+                    try:
+                        rs.udp_socket.close()
+                    except (socket.error, AttributeError) as e:
+                        logger.debug(f"Error during UDP socket close: {e}")
+                    rs.udp_socket = None
 
-            if hasattr(server, "server_socket") and server.server_socket is not None:
-                try:
-                    server.server_socket.shutdown(socket.SHUT_RDWR)
-                except (socket.error, AttributeError) as e:
-                    logger.debug(f"Error during server socket shutdown: {e}")
-                try:
-                    server.server_socket.close()
-                except (socket.error, AttributeError) as e:
-                    logger.debug(f"Error during server socket close: {e}")
-                server.server_socket = None
+                if hasattr(rs, "server_socket") and rs.server_socket is not None:
+                    try:
+                        rs.server_socket.shutdown(socket.SHUT_RDWR)
+                    except (socket.error, AttributeError) as e:
+                        logger.debug(f"Error during server socket shutdown: {e}")
+                    try:
+                        rs.server_socket.close()
+                    except (socket.error, AttributeError) as e:
+                        logger.debug(f"Error during server socket close: {e}")
+                    rs.server_socket = None
 
             # Wait longer for sockets to fully close
             time.sleep(0.5)
