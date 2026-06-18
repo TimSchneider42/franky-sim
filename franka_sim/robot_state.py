@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import dataclasses
 import struct
 from dataclasses import dataclass
-from typing import Tuple
 
 from .franka_protocol import (
     LibfrankaControllerMode,
@@ -11,21 +12,21 @@ from .franka_protocol import (
 
 
 @dataclass(frozen=True)
-class RobotState:
-    q: Tuple[float, ...] = (0.0,) * 7
-    q_d: Tuple[float, ...] = (0.0,) * 7
-    dq: Tuple[float, ...] = (0.0,) * 7
-    dq_d: Tuple[float, ...] = (0.0,) * 7
-    ddq_d: Tuple[float, ...] = (0.0,) * 7
-    tau_J: Tuple[float, ...] = (0.0,) * 7
-    dtau_J: Tuple[float, ...] = (0.0,) * 7
-    tau_J_d: Tuple[float, ...] = (0.0,) * 7
-    theta: Tuple[float, ...] = (0.0,) * 7
-    dtheta: Tuple[float, ...] = (0.0,) * 7
+class FrankaRobotState:
+    q: tuple[float, ...] = (0.0,) * 7
+    q_d: tuple[float, ...] = (0.0,) * 7
+    dq: tuple[float, ...] = (0.0,) * 7
+    dq_d: tuple[float, ...] = (0.0,) * 7
+    ddq_d: tuple[float, ...] = (0.0,) * 7
+    tau_J: tuple[float, ...] = (0.0,) * 7
+    dtau_J: tuple[float, ...] = (0.0,) * 7
+    tau_J_d: tuple[float, ...] = (0.0,) * 7
+    theta: tuple[float, ...] = (0.0,) * 7
+    dtheta: tuple[float, ...] = (0.0,) * 7
     robot_mode: RobotMode = RobotMode.kIdle
     control_command_success_rate: float = 0.0
 
-    O_T_EE: Tuple[float, ...] = (
+    O_T_EE: tuple[float, ...] = (
         1.0,
         0.0,
         0.0,
@@ -43,7 +44,7 @@ class RobotState:
         0.0,
         1.0,
     )
-    O_T_EE_d: Tuple[float, ...] = (
+    O_T_EE_d: tuple[float, ...] = (
         1.0,
         0.0,
         0.0,
@@ -61,7 +62,7 @@ class RobotState:
         0.0,
         1.0,
     )
-    F_T_EE: Tuple[float, ...] = (
+    F_T_EE: tuple[float, ...] = (
         1.0,
         0.0,
         0.0,
@@ -79,7 +80,7 @@ class RobotState:
         0.0,
         1.0,
     )
-    EE_T_K: Tuple[float, ...] = (
+    EE_T_K: tuple[float, ...] = (
         1.0,
         0.0,
         0.0,
@@ -97,7 +98,7 @@ class RobotState:
         0.0,
         1.0,
     )
-    F_T_NE: Tuple[float, ...] = (
+    F_T_NE: tuple[float, ...] = (
         1.0,
         0.0,
         0.0,
@@ -115,7 +116,7 @@ class RobotState:
         0.0,
         1.0,
     )
-    NE_T_EE: Tuple[float, ...] = (
+    NE_T_EE: tuple[float, ...] = (
         1.0,
         0.0,
         0.0,
@@ -134,36 +135,36 @@ class RobotState:
         1.0,
     )
 
-    tau_ext_hat_filtered: Tuple[float, ...] = (0.0,) * 7
-    F_x_Cee: Tuple[float, ...] = (0.0,) * 6
-    I_ee: Tuple[float, ...] = (0.0,) * 9
+    tau_ext_hat_filtered: tuple[float, ...] = (0.0,) * 7
+    F_x_Cee: tuple[float, ...] = (0.0,) * 6
+    I_ee: tuple[float, ...] = (0.0,) * 9
     m_ee: float = 0.0
-    F_x_Ctotal: Tuple[float, ...] = (0.0,) * 6
-    F_x_Cee_d: Tuple[float, ...] = (0.0,) * 6
-    K_F_ext_hat_K: Tuple[float, ...] = (0.0,) * 6
-    elbow: Tuple[float, ...] = (0.0,) * 2
-    elbow_d: Tuple[float, ...] = (0.0,) * 2
-    joint_contact: Tuple[float, ...] = (0.0,) * 7
-    cartesian_contact: Tuple[float, ...] = (0.0,) * 6
-    joint_collision: Tuple[float, ...] = (0.0,) * 7
-    cartesian_collision: Tuple[float, ...] = (0.0,) * 6
+    F_x_Ctotal: tuple[float, ...] = (0.0,) * 6
+    F_x_Cee_d: tuple[float, ...] = (0.0,) * 6
+    K_F_ext_hat_K: tuple[float, ...] = (0.0,) * 6
+    elbow: tuple[float, ...] = (0.0,) * 2
+    elbow_d: tuple[float, ...] = (0.0,) * 2
+    joint_contact: tuple[float, ...] = (0.0,) * 7
+    cartesian_contact: tuple[float, ...] = (0.0,) * 6
+    joint_collision: tuple[float, ...] = (0.0,) * 7
+    cartesian_collision: tuple[float, ...] = (0.0,) * 6
 
-    errors: Tuple[bool, ...] = (False,) * 41
-    current_errors: Tuple[bool, ...] = (False,) * 41
-    last_motion_errors: Tuple[bool, ...] = (False,) * 41
-    reflex_reason: Tuple[bool, ...] = (False,) * 41
+    errors: tuple[bool, ...] = (False,) * 41
+    current_errors: tuple[bool, ...] = (False,) * 41
+    last_motion_errors: tuple[bool, ...] = (False,) * 41
+    reflex_reason: tuple[bool, ...] = (False,) * 41
 
     m_load: float = 0.0
-    I_load: Tuple[float, ...] = (0.0,) * 9
-    F_x_Cload: Tuple[float, ...] = (0.0,) * 3
-    O_F_ext_hat_K: Tuple[float, ...] = (0.0,) * 6
-    O_dP_EE_d: Tuple[float, ...] = (0.0,) * 6
-    O_ddP_O: Tuple[float, ...] = (0.0,) * 3
-    elbow_c: Tuple[float, ...] = (0.0,) * 2
-    delbow_c: Tuple[float, ...] = (0.0,) * 2
-    ddelbow_c: Tuple[float, ...] = (0.0,) * 2
+    I_load: tuple[float, ...] = (0.0,) * 9
+    F_x_Cload: tuple[float, ...] = (0.0,) * 3
+    O_F_ext_hat_K: tuple[float, ...] = (0.0,) * 6
+    O_dP_EE_d: tuple[float, ...] = (0.0,) * 6
+    O_ddP_O: tuple[float, ...] = (0.0,) * 3
+    elbow_c: tuple[float, ...] = (0.0,) * 2
+    delbow_c: tuple[float, ...] = (0.0,) * 2
+    ddelbow_c: tuple[float, ...] = (0.0,) * 2
 
-    O_T_EE_c: Tuple[float, ...] = (
+    O_T_EE_c: tuple[float, ...] = (
         1.0,
         0.0,
         0.0,
@@ -181,11 +182,11 @@ class RobotState:
         0.0,
         1.0,
     )
-    O_dP_EE_c: Tuple[float, ...] = (0.0,) * 6
-    O_ddP_EE_c: Tuple[float, ...] = (0.0,) * 6
+    O_dP_EE_c: tuple[float, ...] = (0.0,) * 6
+    O_ddP_EE_c: tuple[float, ...] = (0.0,) * 6
 
-    accelerometer_top: Tuple[float, ...] = (0.0,) * 18
-    accelerometer_bottom: Tuple[float, ...] = (0.0,) * 18
+    accelerometer_top: tuple[float, ...] = (0.0,) * 18
+    accelerometer_bottom: tuple[float, ...] = (0.0,) * 18
 
     motion_generator_mode: LibfrankaMotionGeneratorMode = LibfrankaMotionGeneratorMode.kIdle
     controller_mode: LibfrankaControllerMode = LibfrankaControllerMode.kOther

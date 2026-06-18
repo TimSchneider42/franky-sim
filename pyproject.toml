@@ -12,7 +12,8 @@ dependencies = [
     "genesis-world",
     "numba",
     "torch>=2.0.0",
-    "pytest"
+    "pytest",
+    "pin"
 ]
 readme = "README.md"
 authors = [
@@ -56,7 +57,7 @@ dev = [
 packages = ["franka_sim"]
 
 [tool.setuptools.package-data]
-"franka_sim" = ["assets/*.urdf"]
+"franka_sim" = ["assets/*.urdf", "assets/meshes/**/*", "assets/NOTICE"]
 
 [tool.black]
 line-length = 100

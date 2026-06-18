@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import logging
 
-from franka_sim.franka_genesis_sim import FrankaGenesisSim
-from franka_sim.franka_sim_server import FrankaSimServer
+from .genesis import SimpleFrankaGenesisSim
+from .franka_sim_server import FrankaSimServer
 
 
 def main() -> None:
@@ -35,8 +37,7 @@ def main() -> None:
     print("Press Ctrl+C to stop the server")
 
     # Create the simulation
-    sim = FrankaGenesisSim(enable_vis=args.vis)
-    sim.start()
+    sim = SimpleFrankaGenesisSim(enable_vis=args.vis)
 
     # Start the server with the simulation
     server = FrankaSimServer(sim=sim)
@@ -47,7 +48,7 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\nShutting down server...")
     finally:
-        sim.stop()
+        server.stop()
 
 
 if __name__ == "__main__":
