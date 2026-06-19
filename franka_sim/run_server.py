@@ -10,7 +10,9 @@ from franka_sim.genesis_sim import SimpleFrankaGenesisSim
 
 def main() -> None:
     """Run the Franka simulation server."""
-    parser = argparse.ArgumentParser(description="Run a standard Franka simulation server with one robot.")
+    parser = argparse.ArgumentParser(
+        description="Run a standard Franka simulation server with one robot."
+    )
     parser.add_argument(
         "-v",
         "--vis",

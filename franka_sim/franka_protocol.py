@@ -227,7 +227,7 @@ class UDPCommand:
 
     @classmethod
     def from_bytes(cls, command_data: bytes) -> "UDPCommand":
-        unpacked = cls.STRUCT.unpack(command_data[:cls.STRUCT.size])
+        unpacked = cls.STRUCT.unpack(command_data[: cls.STRUCT.size])
 
         message_id = unpacked[0]
         q_c = unpacked[1:8]
@@ -313,8 +313,8 @@ class MoveCommand(BaseCommand):
         cls, data: bytes, command_id: int, client_socket: "socket.socket"
     ) -> "MoveCommand":
         """Parse Move command from binary data"""
-        unpacked = cls.STRUCT.unpack(data[:cls.STRUCT.size])
-        
+        unpacked = cls.STRUCT.unpack(data[: cls.STRUCT.size])
+
         # Unpack controller mode and motion generator mode
         controller_mode, motion_generator_mode = unpacked[:2]
         # Validate controller mode and motion generator mode
@@ -427,7 +427,7 @@ class SetCollisionBehaviorCommand(BaseCommand):
     def from_bytes(
         cls, data: bytes, command_id: int, client_socket: "socket.socket"
     ) -> "SetCollisionBehaviorCommand":
-        unpacked = cls.STRUCT.unpack(data[:cls.STRUCT.size])
+        unpacked = cls.STRUCT.unpack(data[: cls.STRUCT.size])
 
         # Unpack torque thresholds (7 doubles each)
         lower_torque_acc = list(unpacked[0:7])
