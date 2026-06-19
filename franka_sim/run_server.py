@@ -4,13 +4,13 @@ from __future__ import annotations
 import argparse
 import logging
 
-from .franka_sim_server import FrankaSimServer
-from .genesis import SimpleFrankaGenesisSim
+from franka_sim import FrankaSimServer
+from franka_sim.genesis_sim import SimpleFrankaGenesisSim
 
 
 def main() -> None:
     """Run the Franka simulation server."""
-    parser = argparse.ArgumentParser(description="Run a Franka simulation server")
+    parser = argparse.ArgumentParser(description="Run a standard Franka simulation server with one robot.")
     parser.add_argument(
         "-v",
         "--vis",
@@ -47,8 +47,6 @@ def main() -> None:
         server.run_forever()
     except KeyboardInterrupt:
         print("\nShutting down server...")
-    finally:
-        server.stop()
 
 
 if __name__ == "__main__":

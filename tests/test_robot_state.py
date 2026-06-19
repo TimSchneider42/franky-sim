@@ -1,9 +1,14 @@
 import dataclasses
 import struct
+
 import numpy as np
 
-from franka_sim.franka_protocol import ControllerMode, MotionGeneratorMode, RobotMode
-from franka_sim.robot_state import FrankaRobotState
+from franka_sim.franka_protocol import (
+    MoveCommandControllerMode,
+    MoveCommandMotionGeneratorMode,
+    RobotMode,
+)
+from franka_sim.franka_robot_state import FrankaRobotState
 
 
 def test_robot_state_initialization():

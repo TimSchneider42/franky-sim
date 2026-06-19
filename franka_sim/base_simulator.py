@@ -26,7 +26,7 @@ class ControlMode(Enum):
     TORQUE = "torque"
     CARTESIAN_POSITION = "cartesian_position"
     CARTESIAN_VELOCITY = "cartesian_velocity"
-    NONE = "none"
+    IDLE = "idle"
 
 
 class BaseRobot(ABC):
@@ -138,28 +138,33 @@ class BaseRobot(ABC):
         """
         state = self.state
         q = np.array(state.q)
-        dq = np.array(state.dq)
 
-        pin.computeAllTerms(self.model, self.data, q, dq)
-        pin.updateFramePlacements(self.model, self.data)
-
-        if self.model.existFrame(self.tcp_frame_name):
-            frame_id = self.model.getFrameId(self.tcp_frame_name)
-        else:
-            frame_id = self.model.nframes - 1
-
-        J = pin.computeFrameJacobian(
-            self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
-        )
-
-        current_pose = self.data.oMf[frame_id]
         target_se3 = pin.XYZQUATToSE3(target_pose)
+        frame_id = self.model.getFrameId(self.tcp_frame_name)
 
-        # 6D error
-        err = pin.log6(current_pose.inverse() * target_se3).vector
+        target_q = q.copy()
+        damp = 1e-4
 
-        tau = J.T @ (self.kp * err - self.kv * (J @ dq)) + self.data.nle
-        self.torque_control(tau)
+        # Simple iterative IK
+        for _ in range(5):
+            pin.forwardKinematics(self.model, self.data, target_q)
+            pin.updateFramePlacement(self.model, self.data, frame_id)
+            current_pose = self.data.oMf[frame_id]
+
+            # Error in LOCAL frame
+            err = pin.log6(current_pose.inverse() * target_se3).vector
+            if np.linalg.norm(err) < 1e-4:
+                break
+
+            J = pin.computeFrameJacobian(
+                self.model, self.data, target_q, frame_id, pin.ReferenceFrame.LOCAL
+            )
+
+            # Damped pseudo-inverse step
+            v = J.T @ np.linalg.solve(J @ J.T + damp * np.eye(6), err)
+            target_q = pin.integrate(self.model, target_q, v)
+
+        self.joint_position_control(target_q)
 
     def cartesian_velocity_control(self, target_vel: np.ndarray) -> None:
         """
@@ -167,22 +172,20 @@ class BaseRobot(ABC):
         """
         state = self.state
         q = np.array(state.q)
-        dq = np.array(state.dq)
 
-        pin.computeAllTerms(self.model, self.data, q, dq)
+        pin.computeAllTerms(self.model, self.data, q, np.zeros(self.model.nv))
         pin.updateFramePlacements(self.model, self.data)
 
-        if self.model.existFrame(self.tcp_frame_name):
-            frame_id = self.model.getFrameId(self.tcp_frame_name)
-        else:
-            frame_id = self.model.nframes - 1
+        frame_id = self.model.getFrameId(self.tcp_frame_name)
 
         J = pin.computeFrameJacobian(
             self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
         )
 
-        tau = J.T @ (self.kv * (target_vel - J @ dq)) + self.data.nle
-        self.torque_control(tau)
+        damp = 1e-4
+        target_dq = J.T @ np.linalg.solve(J @ J.T + damp * np.eye(6), target_vel)
+
+        self.joint_velocity_control(target_dq)
 
 
 class BaseSimulator(ABC):

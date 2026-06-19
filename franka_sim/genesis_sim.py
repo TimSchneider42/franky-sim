@@ -32,12 +32,10 @@ class FrankaGenesisRobot(BaseRobot):
         self.latest_joint_velocities: np.ndarray = np.zeros(7)
         self.ddq_filtered: np.ndarray = np.zeros(7)
         self.prev_dq_full: np.ndarray = np.zeros(7)
-        self.control_mode = ControlMode.NONE
 
     def _torque_control(self, torques: np.ndarray) -> None:
         self.latest_torques = np.array(torques)
         self.franka.control_dofs_force(self.latest_torques, self.dofs_idx)
-        self.control_mode = ControlMode.TORQUE
 
     def _get_state(self) -> RobotState:
         q_full = self.franka.get_dofs_position(self.dofs_idx).cpu().numpy()

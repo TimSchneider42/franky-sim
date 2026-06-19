@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import enum
 import logging
+import socket
 import struct
 import typing
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from .urdf import FR3_URDF
 
 if typing.TYPE_CHECKING:
-    import socket
-
-    from .franka_sim_server import FrankaSimServer
+    from .franka_sim_server import FrankaRobotServer
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class AutomaticErrorRecoveryStatus(enum.IntEnum):
     kAborted = 6
 
 
-class ControllerMode(enum.IntEnum):
+class MoveCommandControllerMode(enum.IntEnum):
     """Controller modes for Move command"""
 
     kJointImpedance = 0
@@ -80,7 +80,7 @@ class ControllerMode(enum.IntEnum):
     kExternalController = 2
 
 
-class MotionGeneratorMode(enum.IntEnum):
+class MoveCommandMotionGeneratorMode(enum.IntEnum):
     """Motion generator modes for Move command"""
 
     kJointPosition = 0
@@ -90,7 +90,7 @@ class MotionGeneratorMode(enum.IntEnum):
     kNone = 4
 
 
-class LibfrankaControllerMode(enum.IntEnum):
+class StateControllerMode(enum.IntEnum):
     """Libfranka Controller modes"""
 
     kJointImpedance = 0
@@ -99,7 +99,7 @@ class LibfrankaControllerMode(enum.IntEnum):
     kOther = 3
 
 
-class LibfrankaMotionGeneratorMode(enum.IntEnum):
+class StateMotionGeneratorMode(enum.IntEnum):
     """Libfranka Motion generator modes"""
 
     kIdle = 0
@@ -108,28 +108,6 @@ class LibfrankaMotionGeneratorMode(enum.IntEnum):
     kCartesianPosition = 3
     kCartesianVelocity = 4
     kNone = 5
-
-
-def convert_to_libfranka_motion_mode(mode: MotionGeneratorMode) -> LibfrankaMotionGeneratorMode:
-    """Convert Move command motion mode to Libfranka motion mode"""
-    conversion_map = {
-        MotionGeneratorMode.kJointPosition: LibfrankaMotionGeneratorMode.kJointPosition,
-        MotionGeneratorMode.kJointVelocity: LibfrankaMotionGeneratorMode.kJointVelocity,
-        MotionGeneratorMode.kCartesianPosition: LibfrankaMotionGeneratorMode.kCartesianPosition,
-        MotionGeneratorMode.kCartesianVelocity: LibfrankaMotionGeneratorMode.kCartesianVelocity,
-        MotionGeneratorMode.kNone: LibfrankaMotionGeneratorMode.kNone,
-    }
-    return conversion_map[mode]
-
-
-def convert_to_libfranka_controller_mode(mode: ControllerMode) -> LibfrankaControllerMode:
-    """Convert Move command controller mode to Libfranka controller mode"""
-    conversion_map = {
-        ControllerMode.kJointImpedance: LibfrankaControllerMode.kJointImpedance,
-        ControllerMode.kCartesianImpedance: LibfrankaControllerMode.kCartesianImpedance,
-        ControllerMode.kExternalController: LibfrankaControllerMode.kExternalController,
-    }
-    return conversion_map[mode]
 
 
 class RobotMode(enum.IntEnum):
@@ -167,7 +145,7 @@ class MessageHeader:
 
 
 @dataclass
-class BaseCommand:
+class BaseCommand(ABC):
     command_id: int
     client_socket: "socket.socket"
 
@@ -225,8 +203,96 @@ class BaseCommand:
     ) -> "BaseCommand":
         raise NotImplementedError
 
-    def handle(self, server: "FrankaSimServer"):
-        raise NotImplementedError
+    @abstractmethod
+    def handle(self, server: "FrankaRobotServer"):
+        pass
+
+
+@dataclass(frozen=True)
+class UDPCommand:
+    """Represents a UDP command from the client"""
+
+    message_id: int = 0
+    q_c: tuple[float, ...] = (0.0,) * 7
+    dq_c: tuple[float, ...] = (0.0,) * 7
+    O_T_EE_c: tuple[float, ...] = (0.0,) * 16
+    O_dP_EE_c: tuple[float, ...] = (0.0,) * 6
+    elbow_c: tuple[float, ...] = (0.0,) * 2
+    valid_elbow: bool = False
+    motion_generation_finished: bool = False
+    tau_J_d: tuple[float, ...] = (0.0,) * 7
+    torque_command_finished: bool = False
+
+    STRUCT = struct.Struct("<Q 7d 7d 16d 6d 2d ? ? 7d ?")
+
+    @classmethod
+    def from_bytes(cls, command_data: bytes) -> "UDPCommand":
+        unpacked = cls.STRUCT.unpack(command_data[:cls.STRUCT.size])
+
+        message_id = unpacked[0]
+        q_c = unpacked[1:8]
+        dq_c = unpacked[8:15]
+        O_T_EE_c = unpacked[15:31]
+        O_dP_EE_c = unpacked[31:37]
+        elbow_c = unpacked[37:39]
+        valid_elbow = bool(unpacked[39])
+        motion_generation_finished = bool(unpacked[40])
+        tau_J_d = unpacked[41:48]
+        torque_command_finished = bool(unpacked[48])
+
+        return cls(
+            message_id=message_id,
+            q_c=q_c,
+            dq_c=dq_c,
+            O_T_EE_c=O_T_EE_c,
+            O_dP_EE_c=O_dP_EE_c,
+            elbow_c=elbow_c,
+            valid_elbow=valid_elbow,
+            motion_generation_finished=motion_generation_finished,
+            tau_J_d=tau_J_d,
+            torque_command_finished=torque_command_finished,
+        )
+
+
+@dataclass
+class ConnectCommand(BaseCommand):
+    """Represents a Connect command request"""
+
+    command_type = Command.kConnect
+
+    version: int
+    network_udp_port: int
+
+    @classmethod
+    def from_bytes(
+        cls, data: bytes, command_id: int, client_socket: "socket.socket"
+    ) -> "ConnectCommand":
+        if len(data) >= 4:
+            version, network_udp_port = struct.unpack("<HH", data[:4])
+            return cls(command_id, client_socket, version, network_udp_port)
+        raise ValueError("Payload too short for Connect command")
+
+    def handle(self, server: "FrankaRobotServer"):
+        if server.udp_connected:
+            logger.warning("Received connect command but already connected.")
+            return
+
+        try:
+            total_size = 12 + 8
+            header = MessageHeader(self.command_type, self.command_id, total_size)
+            header_bytes = header.to_bytes()
+            response_data = struct.pack(
+                "<HH4x", ConnectStatus.kSuccess.value, server.library_version
+            )
+
+            try:
+                self.client_socket.sendall(header_bytes + response_data)
+            except BlockingIOError:
+                pass
+
+            server.setup_udp_connection(self.network_udp_port)
+        except Exception as e:
+            logger.error(f"Error handling Connect command: {e}")
 
 
 @dataclass
@@ -235,36 +301,40 @@ class MoveCommand(BaseCommand):
 
     command_type = Command.kMove
 
-    controller_mode: ControllerMode
-    motion_generator_mode: MotionGeneratorMode
+    controller_mode: MoveCommandControllerMode
+    motion_generator_mode: MoveCommandMotionGeneratorMode
     maximum_path_deviation: tuple  # (translation, rotation, elbow)
     maximum_goal_pose_deviation: tuple  # (translation, rotation, elbow)
+
+    STRUCT = struct.Struct("<II ddd ddd")
 
     @classmethod
     def from_bytes(
         cls, data: bytes, command_id: int, client_socket: "socket.socket"
     ) -> "MoveCommand":
         """Parse Move command from binary data"""
+        unpacked = cls.STRUCT.unpack(data[:cls.STRUCT.size])
+        
         # Unpack controller mode and motion generator mode
-        controller_mode, motion_generator_mode = struct.unpack("<II", data[:8])
+        controller_mode, motion_generator_mode = unpacked[:2]
         # Validate controller mode and motion generator mode
         try:
-            controller_mode = ControllerMode(controller_mode)
-            motion_generator_mode = MotionGeneratorMode(motion_generator_mode)
+            controller_mode = MoveCommandControllerMode(controller_mode)
+            motion_generator_mode = MoveCommandMotionGeneratorMode(motion_generator_mode)
         except ValueError as e:
             raise ValueError(f"Invalid controller mode or motion generator mode: {e}")
 
         # Unpack maximum path deviation
-        path_dev = struct.unpack("<ddd", data[8:32])
+        path_dev = unpacked[2:5]
 
         # Unpack maximum goal pose deviation
-        goal_dev = struct.unpack("<ddd", data[32:56])
+        goal_dev = unpacked[5:8]
 
         return cls(
             command_id, client_socket, controller_mode, motion_generator_mode, path_dev, goal_dev
         )
 
-    def handle(self, server: "FrankaSimServer"):
+    def handle(self, server: "FrankaRobotServer"):
 
         try:
             logger.info(
@@ -295,7 +365,7 @@ class StopMoveCommand(BaseCommand):
     ) -> "StopMoveCommand":
         return cls(command_id, client_socket)
 
-    def handle(self, server: "FrankaSimServer"):
+    def handle(self, server: "FrankaRobotServer"):
         try:
             logger.info("Processing StopMove command")
 
@@ -351,32 +421,25 @@ class SetCollisionBehaviorCommand(BaseCommand):
     lower_force_thresholds_nominal: list[float]  # 6 elements
     upper_force_thresholds_nominal: list[float]  # 6 elements
 
+    STRUCT = struct.Struct("<7d 7d 7d 7d 6d 6d 6d 6d")
+
     @classmethod
     def from_bytes(
         cls, data: bytes, command_id: int, client_socket: "socket.socket"
     ) -> "SetCollisionBehaviorCommand":
-        # Each value is a double (8 bytes)
-        # Total expected size: (7+7+7+7)*8 + (6+6+6+6)*8 = 224 + 192 = 416 bytes
+        unpacked = cls.STRUCT.unpack(data[:cls.STRUCT.size])
 
-        offset = 0
         # Unpack torque thresholds (7 doubles each)
-        lower_torque_acc = list(struct.unpack("<7d", data[offset : offset + 56]))
-        offset += 56
-        upper_torque_acc = list(struct.unpack("<7d", data[offset : offset + 56]))
-        offset += 56
-        lower_torque_nom = list(struct.unpack("<7d", data[offset : offset + 56]))
-        offset += 56
-        upper_torque_nom = list(struct.unpack("<7d", data[offset : offset + 56]))
-        offset += 56
+        lower_torque_acc = list(unpacked[0:7])
+        upper_torque_acc = list(unpacked[7:14])
+        lower_torque_nom = list(unpacked[14:21])
+        upper_torque_nom = list(unpacked[21:28])
 
         # Unpack force thresholds (6 doubles each)
-        lower_force_acc = list(struct.unpack("<6d", data[offset : offset + 48]))
-        offset += 48
-        upper_force_acc = list(struct.unpack("<6d", data[offset : offset + 48]))
-        offset += 48
-        lower_force_nom = list(struct.unpack("<6d", data[offset : offset + 48]))
-        offset += 48
-        upper_force_nom = list(struct.unpack("<6d", data[offset : offset + 48]))
+        lower_force_acc = list(unpacked[28:34])
+        upper_force_acc = list(unpacked[34:40])
+        lower_force_nom = list(unpacked[40:46])
+        upper_force_nom = list(unpacked[46:52])
 
         return cls(
             command_id,
@@ -391,7 +454,7 @@ class SetCollisionBehaviorCommand(BaseCommand):
             upper_force_nom,
         )
 
-    def handle(self, server: "FrankaSimServer"):
+    def handle(self, server: "FrankaRobotServer"):
         try:
             logger.info("Received SetCollisionBehavior command with values:")
             logger.debug(
@@ -428,7 +491,7 @@ class SetJointImpedanceCommand(BaseCommand):
         K_theta = list(struct.unpack("<7d", data[:56]))
         return cls(command_id, client_socket, K_theta)
 
-    def handle(self, server: "FrankaSimServer"):
+    def handle(self, server: "FrankaRobotServer"):
         try:
             logger.info("Received SetJointImpedance command with values:")
             logger.debug(f"Joint stiffness values: {self.K_theta}")
@@ -460,7 +523,7 @@ class SetCartesianImpedanceCommand(BaseCommand):
         K_x = list(struct.unpack("<6d", data[:48]))
         return cls(command_id, client_socket, K_x)
 
-    def handle(self, server: "FrankaSimServer"):
+    def handle(self, server: "FrankaRobotServer"):
         try:
             logger.info("Received SetCartesianImpedance command with values:")
             logger.debug(f"Cartesian stiffness values: {self.K_x}")
@@ -485,7 +548,7 @@ class GetRobotModelCommand(BaseCommand):
     ) -> "GetRobotModelCommand":
         return cls(command_id, client_socket)
 
-    def handle(self, server: "FrankaSimServer"):
+    def handle(self, server: "FrankaRobotServer"):
         try:
             self.reply(0, payload=FR3_URDF.encode("ascii"))
         except Exception as e:
@@ -506,7 +569,7 @@ class AutomaticErrorRecoveryCommand(BaseCommand):
     ) -> "AutomaticErrorRecoveryCommand":
         return cls(command_id, client_socket)
 
-    def handle(self, server: "FrankaSimServer"):
+    def handle(self, server: "FrankaRobotServer"):
         logger.info("Executing Automatic Error Recovery")
         # In a full simulation we would clear current errors here
         # For now, simply acknowledge success

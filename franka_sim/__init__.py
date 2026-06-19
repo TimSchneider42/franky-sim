@@ -5,14 +5,14 @@ from .franka_protocol import (
     AutomaticErrorRecoveryStatus,
     Command,
     ConnectStatus,
-    ControllerMode,
     MessageHeader,
-    MotionGeneratorMode,
+    MoveCommandControllerMode,
+    MoveCommandMotionGeneratorMode,
     MoveStatus,
     RobotMode,
 )
+from .franka_robot_state import FrankaRobotState
 from .franka_sim_server import FrankaSimServer
-from .robot_state import FrankaRobotState
 from .run_server import main as run_server_main
 from .urdf import FR3_URDF
 
@@ -23,12 +23,12 @@ __all__ = [
     "Command",
     "ConnectStatus",
     "ControlMode",
-    "ControllerMode",
+    "MoveCommandControllerMode",
     "FR3_URDF",
     "FrankaRobotState",
     "FrankaSimServer",
     "MessageHeader",
-    "MotionGeneratorMode",
+    "MoveCommandMotionGeneratorMode",
     "MoveStatus",
     "RobotMode",
     "RobotState",

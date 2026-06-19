@@ -1,27 +1,22 @@
 import logging
-import socket
 import struct
 import time
 
 import numpy as np
-import pytest
 
 from franka_sim.franka_protocol import (
     COMMAND_PORT,
     Command,
     ConnectStatus,
-    ControllerMode,
-    LibfrankaControllerMode,
-    LibfrankaMotionGeneratorMode,
     MessageHeader,
-    MotionGeneratorMode,
     MoveCommand,
+    MoveCommandControllerMode,
+    MoveCommandMotionGeneratorMode,
     MoveStatus,
     RobotMode,
-    convert_to_libfranka_controller_mode,
-    convert_to_libfranka_motion_mode,
+    StateControllerMode,
+    StateMotionGeneratorMode,
 )
-from franka_sim.franka_sim_server import FrankaSimServer
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +50,8 @@ def test_move_command(tcp_client, udp_client, sim_server, mock_genesis_sim):
     move_cmd = MoveCommand(
         command_id=2,
         client_socket=None,
-        controller_mode=ControllerMode.kJointImpedance,
-        motion_generator_mode=MotionGeneratorMode.kJointPosition,
+        controller_mode=MoveCommandControllerMode.kJointImpedance,
+        motion_generator_mode=MoveCommandMotionGeneratorMode.kJointPosition,
         maximum_path_deviation=(0.1, 0.1, 0.1),
         maximum_goal_pose_deviation=(0.1, 0.1, 0.1),
     )
@@ -89,18 +84,11 @@ def test_move_command(tcp_client, udp_client, sim_server, mock_genesis_sim):
     assert status == MoveStatus.kMotionStarted.value
 
     # Wait for state update with proper verification using Libfranka modes
-    expected_libfranka_motion_mode = convert_to_libfranka_motion_mode(
-        move_cmd.motion_generator_mode
-    )
-    expected_libfranka_controller_mode = convert_to_libfranka_controller_mode(
-        move_cmd.controller_mode
-    )
-
     assert wait_for_state_update(
         sim_server,
         lambda state: (
-            state["motion_generator_mode"] == expected_libfranka_motion_mode.value
-            and state["controller_mode"] == expected_libfranka_controller_mode.value
+            state["motion_generator_mode"] == StateMotionGeneratorMode.kJointPosition
+            and state["controller_mode"] == StateControllerMode.kJointImpedance
         ),
         timeout=1.0,
     ), "Failed to receive expected state update"
@@ -118,8 +106,8 @@ def test_stop_move_command(tcp_client, udp_client, sim_server, mock_genesis_sim)
     move_cmd = MoveCommand(
         command_id=2,
         client_socket=None,
-        controller_mode=ControllerMode.kJointImpedance,
-        motion_generator_mode=MotionGeneratorMode.kJointPosition,
+        controller_mode=MoveCommandControllerMode.kJointImpedance,
+        motion_generator_mode=MoveCommandMotionGeneratorMode.kJointPosition,
         maximum_path_deviation=(0.1, 0.1, 0.1),
         maximum_goal_pose_deviation=(0.1, 0.1, 0.1),
     )
@@ -180,7 +168,7 @@ def test_invalid_move_parameters(tcp_client, udp_client, sim_server, mock_genesi
     payload = struct.pack(
         "<II3d3d",  # Changed format to match the actual data
         99,  # Invalid controller mode
-        MotionGeneratorMode.kJointPosition.value,
+        MoveCommandMotionGeneratorMode.kJointPosition.value,
         0.1,
         0.1,
         0.1,  # maximum_path_deviation
@@ -246,8 +234,8 @@ def test_position_control_desired_states(tcp_client, udp_client, sim_server, moc
     move_cmd = MoveCommand(
         command_id=2,
         client_socket=None,
-        controller_mode=ControllerMode.kJointImpedance,
-        motion_generator_mode=MotionGeneratorMode.kJointPosition,
+        controller_mode=MoveCommandControllerMode.kJointImpedance,
+        motion_generator_mode=MoveCommandMotionGeneratorMode.kJointPosition,
         maximum_path_deviation=(0.1, 0.1, 0.1),
         maximum_goal_pose_deviation=(0.1, 0.1, 0.1),
     )
@@ -299,8 +287,8 @@ def test_velocity_control_desired_states(tcp_client, udp_client, sim_server, moc
     move_cmd = MoveCommand(
         command_id=2,
         client_socket=None,
-        controller_mode=ControllerMode.kJointImpedance,
-        motion_generator_mode=MotionGeneratorMode.kJointVelocity,
+        controller_mode=MoveCommandControllerMode.kJointImpedance,
+        motion_generator_mode=MoveCommandMotionGeneratorMode.kJointVelocity,
         maximum_path_deviation=(0.1, 0.1, 0.1),
         maximum_goal_pose_deviation=(0.1, 0.1, 0.1),
     )
@@ -352,8 +340,8 @@ def test_torque_control_desired_states(tcp_client, udp_client, sim_server, mock_
     move_cmd = MoveCommand(
         command_id=2,
         client_socket=None,
-        controller_mode=ControllerMode.kExternalController,
-        motion_generator_mode=MotionGeneratorMode.kJointPosition,
+        controller_mode=MoveCommandControllerMode.kExternalController,
+        motion_generator_mode=MoveCommandMotionGeneratorMode.kJointPosition,
         maximum_path_deviation=(0.1, 0.1, 0.1),
         maximum_goal_pose_deviation=(0.1, 0.1, 0.1),
     )
@@ -533,8 +521,8 @@ def test_motion_generation_finished(tcp_client, udp_client, sim_server, mock_gen
     move_cmd = MoveCommand(
         command_id=2,
         client_socket=None,
-        controller_mode=ControllerMode.kJointImpedance,
-        motion_generator_mode=MotionGeneratorMode.kJointPosition,
+        controller_mode=MoveCommandControllerMode.kJointImpedance,
+        motion_generator_mode=MoveCommandMotionGeneratorMode.kJointPosition,
         maximum_path_deviation=(0.1, 0.1, 0.1),
         maximum_goal_pose_deviation=(0.1, 0.1, 0.1),
     )

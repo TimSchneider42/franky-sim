@@ -5,8 +5,8 @@ import struct
 from dataclasses import dataclass
 
 from .franka_protocol import (
-    LibfrankaControllerMode,
-    LibfrankaMotionGeneratorMode,
+    StateControllerMode,
+    StateMotionGeneratorMode,
     RobotMode,
 )
 
@@ -188,8 +188,8 @@ class FrankaRobotState:
     accelerometer_top: tuple[float, ...] = (0.0,) * 18
     accelerometer_bottom: tuple[float, ...] = (0.0,) * 18
 
-    motion_generator_mode: LibfrankaMotionGeneratorMode = LibfrankaMotionGeneratorMode.kIdle
-    controller_mode: LibfrankaControllerMode = LibfrankaControllerMode.kOther
+    motion_generator_mode: StateMotionGeneratorMode = StateMotionGeneratorMode.kIdle
+    controller_mode: StateControllerMode = StateControllerMode.kOther
 
     def replace(self, **kwargs):
         """Returns a new instance with the specified fields replaced."""
@@ -243,7 +243,7 @@ class FrankaRobotState:
                 "<B",
                 (
                     self.motion_generator_mode.value
-                    if isinstance(self.motion_generator_mode, LibfrankaMotionGeneratorMode)
+                    if isinstance(self.motion_generator_mode, StateMotionGeneratorMode)
                     else self.motion_generator_mode
                 ),
             ),
@@ -251,7 +251,7 @@ class FrankaRobotState:
                 "<B",
                 (
                     self.controller_mode.value
-                    if isinstance(self.controller_mode, LibfrankaControllerMode)
+                    if isinstance(self.controller_mode, StateControllerMode)
                     else self.controller_mode
                 ),
             ),

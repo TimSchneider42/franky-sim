@@ -39,7 +39,7 @@ classifiers = [
 "Documentation" = "https://github.com/BarisYazici/libfranka-sim#readme"
 
 [project.scripts]
-run-franka-sim-server = "franka_sim.run_server:main"
+run-server = "franka_sim.run_server:main"
 
 [project.optional-dependencies]
 dev = [

@@ -50,7 +50,7 @@ def mock_genesis_sim():
 
     import pinocchio as pin
 
-    from franka_sim.robot_state import FrankaRobotState
+    from franka_sim.franka_robot_state import FrankaRobotState
 
     mock_state = FrankaRobotState()
     mock_robot.state = mock_state
@@ -122,16 +122,16 @@ def sim_server(mock_genesis_sim):
 
             # Additional socket cleanup - with better error handling
             for rs in server.robot_servers:
-                if hasattr(rs, "client_socket") and rs.client_socket is not None:
+                if hasattr(rs, "client_socket") and rs.tcp_socket is not None:
                     try:
-                        rs.client_socket.shutdown(socket.SHUT_RDWR)
+                        rs.tcp_socket.shutdown(socket.SHUT_RDWR)
                     except (socket.error, AttributeError) as e:
                         logger.debug(f"Error during client socket shutdown: {e}")
                     try:
-                        rs.client_socket.close()
+                        rs.tcp_socket.close()
                     except (socket.error, AttributeError) as e:
                         logger.debug(f"Error during client socket close: {e}")
-                    rs.client_socket = None
+                    rs.tcp_socket = None
 
                 if hasattr(rs, "udp_socket") and rs.udp_socket is not None:
                     try:
