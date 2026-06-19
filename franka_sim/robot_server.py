@@ -105,7 +105,7 @@ class MessageReceiver:
         return None, None
 
 
-class FrankaRobotServer:
+class RobotServer:
     def __init__(self, robot: BaseRobot, host: str):
         self.robot = robot
         self.host = host

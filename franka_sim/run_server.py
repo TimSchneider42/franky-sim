@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import logging
 
-from franka_sim import FrankaSimServer
+from franka_sim import SimulationServer
 from franka_sim.genesis_sim import SimpleFrankaGenesisSim
 
 
@@ -40,7 +40,7 @@ def main() -> None:
     sim = SimpleFrankaGenesisSim(enable_vis=args.vis)
 
     # Start the server with the simulation
-    server = FrankaSimServer(sim=sim)
+    server = SimulationServer(sim=sim)
     server.start()
 
     try:

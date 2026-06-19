@@ -6,25 +6,25 @@ import time
 from typing import Callable, Optional
 
 from .base_simulator import BaseSimulator
-from .franka_robot_server import FrankaRobotServer
+from .robot_server import RobotServer
 
 logger = logging.getLogger(__name__)
 
 
-class FrankaSimServer:
+class SimulationServer:
     def __init__(
         self, sim: BaseSimulator, hostnames: Callable[[int], str] = lambda i: f"127.0.0.{i + 1}"
     ):
         self.robot_hostnames: Callable[[int], str] = hostnames
         self.sim: BaseSimulator = sim
-        self.robot_servers: list[FrankaRobotServer] = []
+        self.robot_servers: list[RobotServer] = []
         self.running: bool = False
         self.async_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
         self.sim.init()
         for i, robot in enumerate(self.sim.robots):
-            rs = FrankaRobotServer(robot, self.robot_hostnames(i))
+            rs = RobotServer(robot, self.robot_hostnames(i))
             rs.init()
             self.robot_servers.append(rs)
 
