@@ -5,9 +5,9 @@ import struct
 from dataclasses import dataclass
 
 from .franka_protocol import (
+    RobotMode,
     StateControllerMode,
     StateMotionGeneratorMode,
-    RobotMode,
 )
 
 
@@ -140,7 +140,6 @@ class FrankaRobotState:
     I_ee: tuple[float, ...] = (0.0,) * 9
     m_ee: float = 0.0
     F_x_Ctotal: tuple[float, ...] = (0.0,) * 6
-    F_x_Cee_d: tuple[float, ...] = (0.0,) * 6
     K_F_ext_hat_K: tuple[float, ...] = (0.0,) * 6
     elbow: tuple[float, ...] = (0.0,) * 2
     elbow_d: tuple[float, ...] = (0.0,) * 2
