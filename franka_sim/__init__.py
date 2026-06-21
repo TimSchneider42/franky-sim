@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .base_simulator import BaseRobot, BaseSimulator, ControlMode, RobotState
+from .base_simulator import BaseRobot, BaseSimulator, ControlMode
 from .franka_protocol import (
     AutomaticErrorRecoveryStatus,
     Command,
@@ -12,9 +12,10 @@ from .franka_protocol import (
     RobotMode,
 )
 from .franka_robot_state import FrankaRobotState
-from .run_server import main as run_server_main
 from .simulation_server import SimulationServer
 from .urdf import FR3_URDF
+
+from .run_server import main as run_server_main  # isort:skip
 
 __all__ = [
     "AutomaticErrorRecoveryStatus",
@@ -31,6 +32,5 @@ __all__ = [
     "MoveCommandMotionGeneratorMode",
     "MoveStatus",
     "RobotMode",
-    "RobotState",
     "run_server_main",
 ]
