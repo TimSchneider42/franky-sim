@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from .urdf import FR3_URDF
 
 if typing.TYPE_CHECKING:
-    from .franka_sim_server import FrankaRobotServer
+    from .robot_server import RobotServer
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +204,7 @@ class BaseCommand(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def handle(self, server: "FrankaRobotServer"):
+    def handle(self, server: "RobotServer"):
         pass
 
 
@@ -272,7 +272,7 @@ class ConnectCommand(BaseCommand):
             return cls(command_id, client_socket, version, network_udp_port)
         raise ValueError("Payload too short for Connect command")
 
-    def handle(self, server: "FrankaRobotServer"):
+    def handle(self, server: "RobotServer"):
         if server.udp_connected:
             logger.warning("Received connect command but already connected.")
             return
@@ -334,7 +334,7 @@ class MoveCommand(BaseCommand):
             command_id, client_socket, controller_mode, motion_generator_mode, path_dev, goal_dev
         )
 
-    def handle(self, server: "FrankaRobotServer"):
+    def handle(self, server: "RobotServer"):
 
         try:
             logger.info(
@@ -365,7 +365,7 @@ class StopMoveCommand(BaseCommand):
     ) -> "StopMoveCommand":
         return cls(command_id, client_socket)
 
-    def handle(self, server: "FrankaRobotServer"):
+    def handle(self, server: "RobotServer"):
         try:
             logger.info("Processing StopMove command")
 
@@ -404,6 +404,71 @@ class StopMoveCommand(BaseCommand):
             logger.error(f"Error handling StopMove command: {e}")
             # Send error response
             self.reply(5)  # Status 5 = Aborted
+
+
+@dataclass
+class SetEEToKCommand(BaseCommand):
+    command_type = Command.kSetEEToK
+    EE_T_K: tuple[float, ...]
+
+    STRUCT = struct.Struct("<16d")
+
+    @classmethod
+    def from_bytes(
+        cls, data: bytes, command_id: int, client_socket: "socket.socket"
+    ) -> "SetEEToKCommand":
+        unpacked = cls.STRUCT.unpack(data[: cls.STRUCT.size])
+        return cls(command_id, client_socket, unpacked)
+
+    def handle(self, server: "RobotServer") -> None:
+        logger.info("Handling SetEEToKCommand")
+        server.robot.set_EE_T_K(self.EE_T_K)
+        self.reply(0)  # Status 0 = Success
+
+
+@dataclass
+class SetNEToEECommand(BaseCommand):
+    command_type = Command.kSetNEToEE
+    NE_T_EE: tuple[float, ...]
+
+    STRUCT = struct.Struct("<16d")
+
+    @classmethod
+    def from_bytes(
+        cls, data: bytes, command_id: int, client_socket: "socket.socket"
+    ) -> "SetNEToEECommand":
+        unpacked = cls.STRUCT.unpack(data[: cls.STRUCT.size])
+        return cls(command_id, client_socket, unpacked)
+
+    def handle(self, server: "RobotServer") -> None:
+        logger.info("Handling SetNEToEECommand")
+        server.robot.set_NE_T_EE(self.NE_T_EE)
+        self.reply(0)
+
+
+@dataclass
+class SetLoadCommand(BaseCommand):
+    command_type = Command.kSetLoad
+    m_load: float
+    F_x_Cload: tuple[float, ...]
+    I_load: tuple[float, ...]
+
+    STRUCT = struct.Struct("<d 3d 9d")
+
+    @classmethod
+    def from_bytes(
+        cls, data: bytes, command_id: int, client_socket: "socket.socket"
+    ) -> "SetLoadCommand":
+        unpacked = cls.STRUCT.unpack(data[: cls.STRUCT.size])
+        m_load = unpacked[0]
+        F_x_Cload = unpacked[1:4]
+        I_load = unpacked[4:13]
+        return cls(command_id, client_socket, m_load, F_x_Cload, I_load)
+
+    def handle(self, server: "RobotServer") -> None:
+        logger.info("Handling SetLoadCommand")
+        server.robot.set_load(self.m_load, self.F_x_Cload, self.I_load)
+        self.reply(0)
 
 
 @dataclass
@@ -454,7 +519,7 @@ class SetCollisionBehaviorCommand(BaseCommand):
             upper_force_nom,
         )
 
-    def handle(self, server: "FrankaRobotServer"):
+    def handle(self, server: "RobotServer"):
         try:
             logger.info("Received SetCollisionBehavior command with values:")
             logger.debug(
@@ -491,7 +556,7 @@ class SetJointImpedanceCommand(BaseCommand):
         K_theta = list(struct.unpack("<7d", data[:56]))
         return cls(command_id, client_socket, K_theta)
 
-    def handle(self, server: "FrankaRobotServer"):
+    def handle(self, server: "RobotServer"):
         try:
             logger.info("Received SetJointImpedance command with values:")
             logger.debug(f"Joint stiffness values: {self.K_theta}")
@@ -523,7 +588,7 @@ class SetCartesianImpedanceCommand(BaseCommand):
         K_x = list(struct.unpack("<6d", data[:48]))
         return cls(command_id, client_socket, K_x)
 
-    def handle(self, server: "FrankaRobotServer"):
+    def handle(self, server: "RobotServer"):
         try:
             logger.info("Received SetCartesianImpedance command with values:")
             logger.debug(f"Cartesian stiffness values: {self.K_x}")
@@ -548,7 +613,7 @@ class GetRobotModelCommand(BaseCommand):
     ) -> "GetRobotModelCommand":
         return cls(command_id, client_socket)
 
-    def handle(self, server: "FrankaRobotServer"):
+    def handle(self, server: "RobotServer"):
         try:
             self.reply(0, payload=FR3_URDF.encode("ascii"))
         except Exception as e:
@@ -569,7 +634,7 @@ class AutomaticErrorRecoveryCommand(BaseCommand):
     ) -> "AutomaticErrorRecoveryCommand":
         return cls(command_id, client_socket)
 
-    def handle(self, server: "FrankaRobotServer"):
+    def handle(self, server: "RobotServer"):
         logger.info("Executing Automatic Error Recovery")
         # In a full simulation we would clear current errors here
         # For now, simply acknowledge success
