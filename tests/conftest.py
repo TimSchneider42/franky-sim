@@ -86,9 +86,9 @@ def sim_server(mock_genesis_sim):
     except (ConnectionRefusedError, socket.timeout):
         pass
 
-    from franka_sim.franka_sim_server import FrankaSimServer
+    from franka_sim import SimulationServer
 
-    server = FrankaSimServer(sim=mock_genesis_sim)
+    server = SimulationServer(sim=mock_genesis_sim)
     server_thread = threading.Thread(target=server.run_forever)
     server_thread.daemon = True
 
