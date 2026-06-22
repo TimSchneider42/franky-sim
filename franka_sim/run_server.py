@@ -35,12 +35,13 @@ def main() -> None:
     logging.getLogger("numba").setLevel(logging.WARNING)
 
     print(f"Starting Franka Simulation Server {'with' if args.vis else 'without'} visualization")
-    print("Connect to the server using 'localhost' or '127.0.0.1' as the robot IP address")
-    print("Press Ctrl+C to stop the server")
 
     # Create the simulation
     with GenesisSimulation(enable_visualization=args.vis) as sim:
+        robot = sim.add_robot()
         with SimulationServer(sim) as server:
+            print(f"Connect to the server using '{robot.hostname}' as the robot IP address")
+            print("Press Ctrl+C to stop the server")
             try:
                 server.run_forever()
             except KeyboardInterrupt:

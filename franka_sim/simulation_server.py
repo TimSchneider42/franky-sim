@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Callable, Optional
+from typing import Iterable, Optional
 
 from .base_simulator import BaseSimulator
 from .robot_server import RobotServer
@@ -11,19 +11,43 @@ from .robot_server import RobotServer
 logger = logging.getLogger(__name__)
 
 
+class LocalHostnames:
+    def __iter__(self):
+        for x in range(256):
+            for y in range(256):
+                for z in range(256):
+                    # Skip the Network Address (127.0.0.0)
+                    if x == 0 and y == 0 and z == 0:
+                        continue
+
+                    # Skip the Broadcast Address (127.255.255.255)
+                    if x == 255 and y == 255 and z == 255:
+                        continue
+
+                    yield f"127.{x}.{y}.{z}"
+
+
 class SimulationServer:
     def __init__(
-        self, sim: BaseSimulator, hostnames: Callable[[int], str] = lambda i: f"127.0.0.{i + 1}"
+        self,
+        sim: BaseSimulator,
+        hostname_candidates: Iterable[str] = LocalHostnames(),
     ):
-        self.robot_hostnames: Callable[[int], str] = hostnames
+        self._hostname_candidates = hostname_candidates
         self.sim: BaseSimulator = sim
         self.robot_servers: list[RobotServer] = []
         self.running: bool = False
         self.async_thread: Optional[threading.Thread] = None
 
+    @property
+    def _remaining_hostname_candidates(self) -> Iterable[str]:
+        for h in self._hostname_candidates:
+            if h not in {r.hostname for r in self.robot_servers}:
+                yield h
+
     def init(self) -> None:
         for i, robot in enumerate(self.sim.robots):
-            rs = RobotServer(robot, self.robot_hostnames(i))
+            rs = RobotServer(robot, self._remaining_hostname_candidates)
             rs.init()
             self.robot_servers.append(rs)
         self.sim.start()

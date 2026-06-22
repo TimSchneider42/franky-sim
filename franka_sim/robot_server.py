@@ -4,7 +4,7 @@ import enum
 import logging
 import socket
 import struct
-from typing import Optional
+from typing import Iterable, Optional
 
 import numpy as np
 import pinocchio as pin
@@ -112,9 +112,10 @@ class MessageReceiver:
 
 
 class RobotServer:
-    def __init__(self, robot: BaseRobot, hostname: str):
+    def __init__(self, robot: BaseRobot, hostname_candidates: Iterable[str]):
         self._robot = robot
-        self._hostname = hostname
+        self._hostname: str | None = None
+        self._hostname_candidates = hostname_candidates
         self._server_socket: Optional[socket.socket] = None
 
         self._current_motion_id: int = 0
@@ -139,8 +140,23 @@ class RobotServer:
             return
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        self._server_socket.bind((self._hostname, COMMAND_PORT))
+        tested_candidates = []
+        for hostname in self._hostname_candidates:
+            try:
+                tested_candidates.append(hostname)
+                self._server_socket.bind((hostname, COMMAND_PORT))
+                self._hostname = hostname
+                break
+            except OSError:
+                pass
+        else:
+            if len(tested_candidates) > 5:
+                tested_candidates = tested_candidates[:5]
+                tested_candidates.append("...")
+            raise ValueError(
+                f"Could not find available hostname among {len(tested_candidates)} "
+                f"tested candidates: {', '.join(tested_candidates)}"
+            )
         self._server_socket.listen(1)
         self._server_socket.setblocking(False)
         self.reset_state()
@@ -356,7 +372,8 @@ class RobotServer:
         state_bytes = self.robot_state.pack_state()
         message_id_bytes = struct.pack("<Q", self._message_id)
         self._udp_socket.sendto(
-            message_id_bytes + state_bytes, (self._client_address, self._client_udp_port)
+            message_id_bytes + state_bytes,
+            (self._client_address, self._client_udp_port),
         )
 
         if self._current_motion_id and self._message_id == 0:

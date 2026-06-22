@@ -12,7 +12,7 @@ from .franka_protocol import (
     RobotMode,
 )
 from .franka_robot_state import FrankaRobotState
-from .simulation_server import SimulationServer
+from .simulation_server import LocalHostnames, SimulationServer
 from .urdf import FR3_URDF
 
 from .run_server import main as run_server_main  # isort:skip
@@ -28,6 +28,7 @@ __all__ = [
     "FR3_URDF",
     "FrankaRobotState",
     "SimulationServer",
+    "LocalHostnames",
     "MessageHeader",
     "MoveCommandMotionGeneratorMode",
     "MoveStatus",
