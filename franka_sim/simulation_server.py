@@ -21,8 +21,7 @@ class SimulationServer:
         self.running: bool = False
         self.async_thread: Optional[threading.Thread] = None
 
-    def start(self) -> None:
-        self.sim.init()
+    def init(self) -> None:
         for i, robot in enumerate(self.sim.robots):
             rs = RobotServer(robot, self.robot_hostnames(i))
             rs.init()
@@ -43,31 +42,25 @@ class SimulationServer:
 
     def run_forever(self, realtime: bool | float = True):
         self.running = True
-        try:
-            while self.running:
-                self.run_once(realtime)
-        finally:
-            self.stop()
+        while self.running:
+            self.run_once(realtime)
 
     def run_async(self, realtime: bool | float = True):
-        self.async_thread = threading.Thread(target=self.run_forever, args=(realtime,))
-        self.async_thread.daemon = True
+        self.async_thread = threading.Thread(target=self.run_forever, args=(realtime,), daemon=True)
         self.async_thread.start()
 
-    def stop(self) -> None:
+    def cleanup(self) -> None:
         self.running = False
         if self.async_thread and self.async_thread.is_alive():
             if self.async_thread is not threading.current_thread():
-                self.async_thread.join(timeout=1.0)
+                self.async_thread.join()
 
         for rs in self.robot_servers:
             rs.cleanup()
 
-        self.sim.cleanup()
-
     def __enter__(self):
-        self.start()
+        self.init()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
+        self.cleanup()

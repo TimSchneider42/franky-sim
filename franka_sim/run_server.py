@@ -39,16 +39,12 @@ def main() -> None:
     print("Press Ctrl+C to stop the server")
 
     # Create the simulation
-    sim = SimpleFrankaGenesisSim(enable_vis=args.vis)
-
-    # Start the server with the simulation
-    server = SimulationServer(sim=sim)
-    server.start()
-
-    try:
-        server.run_forever()
-    except KeyboardInterrupt:
-        print("\nShutting down server...")
+    with SimpleFrankaGenesisSim(enable_vis=args.vis) as sim:
+        with SimulationServer(sim) as server:
+            try:
+                server.run_forever()
+            except KeyboardInterrupt:
+                print("\nShutting down server...")
 
 
 if __name__ == "__main__":
