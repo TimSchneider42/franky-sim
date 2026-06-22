@@ -113,72 +113,71 @@ class MessageReceiver:
 
 class RobotServer:
     def __init__(self, robot: BaseRobot, hostname: str):
-        self.robot = robot
-        self.hostname = hostname
-        self.server_socket: Optional[socket.socket] = None
-        self.library_version: int = 9
+        self._robot = robot
+        self._hostname = hostname
+        self._server_socket: Optional[socket.socket] = None
 
-        self.current_motion_id: int = 0
-        self.tcp_socket: Optional[socket.socket] = None
-        self.udp_socket: Optional[socket.socket] = None
-        self.client_address: Optional[str] = None
-        self.client_udp_port: Optional[int] = None
+        self._current_motion_id: int = 0
+        self._tcp_socket: Optional[socket.socket] = None
+        self._udp_socket: Optional[socket.socket] = None
+        self._client_address: Optional[str] = None
+        self._client_udp_port: Optional[int] = None
 
-        self.control_mode: ControlMode = ControlMode.IDLE
-        self.impedance_control_mode: ImpedanceControlMode = ImpedanceControlMode.NONE
-        self.current_control_command: UDPCommand = UDPCommand()
+        self._control_mode: ControlMode = ControlMode.IDLE
+        self._impedance_control_mode: ImpedanceControlMode = ImpedanceControlMode.NONE
+        self._current_control_command: UDPCommand = UDPCommand()
 
-        self.message_id: int = 0
-        self.tcp_receiver: Optional[MessageReceiver] = None
-        self.udp_receiver: Optional[NonBlockingReceiver] = None
+        self._message_id: int = 0
+        self._tcp_receiver: Optional[MessageReceiver] = None
+        self._udp_receiver: Optional[NonBlockingReceiver] = None
 
-        self.holding_q: Optional[tuple[float, ...]] = None
+        self._holding_q: Optional[tuple[float, ...]] = None
         robot._set_server(self)
 
     def init(self):
-        if self.server_socket:
+        if self._server_socket:
             return
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        self.server_socket.bind((self.hostname, COMMAND_PORT))
-        self.server_socket.listen(1)
-        self.server_socket.setblocking(False)
+        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        self._server_socket.bind((self._hostname, COMMAND_PORT))
+        self._server_socket.listen(1)
+        self._server_socket.setblocking(False)
         self.reset_state()
 
     def cleanup(self):
-        if self.server_socket:
+        if self._server_socket:
             try:
-                self.server_socket.close()
+                self._server_socket.close()
             except OSError:
                 pass
-            self.server_socket = None
+            self._server_socket = None
 
     def reset_state(self):
-        self.current_motion_id = 0
-        if self.tcp_socket:
+        self._current_motion_id = 0
+        if self._tcp_socket:
             try:
-                self.tcp_socket.close()
+                self._tcp_socket.close()
             except OSError:
                 pass
-        self.tcp_socket = None
+        self._tcp_socket = None
 
-        if self.udp_socket:
+        if self._udp_socket:
             try:
-                self.udp_socket.close()
+                self._udp_socket.close()
             except OSError:
                 pass
-        self.udp_socket = None
+        self._udp_socket = None
 
-        self.client_address = None
-        self.client_udp_port = None
-        self.control_mode = ControlMode.IDLE
-        self.current_control_command = UDPCommand()
-        self.tcp_receiver = None
-        self.udp_receiver = None
+        self._client_address = None
+        self._client_udp_port = None
+        self._control_mode = ControlMode.IDLE
+        self._current_control_command = UDPCommand()
+        self._tcp_receiver = None
+        self._udp_receiver = None
 
-        self.message_id = 0
-        self.holding_q = tuple(self.robot.inner_state.q)
+        self._message_id = 0
+        self._holding_q = tuple(self._robot.inner_state.q)
 
     def start_motion(
         self,
@@ -186,27 +185,27 @@ class RobotServer:
         motion_generator_mode: MoveCommandMotionGeneratorMode,
         motion_id: int,
     ):
-        self.current_motion_id = motion_id
+        self._current_motion_id = motion_id
 
-        self.current_control_command = UDPCommand()
+        self._current_control_command = UDPCommand()
         if controller_mode == MoveCommandControllerMode.kExternalController:
-            self.control_mode = ControlMode.TORQUE
-            self.impedance_control_mode = ImpedanceControlMode.NONE
+            self._control_mode = ControlMode.TORQUE
+            self._impedance_control_mode = ImpedanceControlMode.NONE
         else:
-            self.control_mode = {
+            self._control_mode = {
                 MoveCommandMotionGeneratorMode.kJointPosition: ControlMode.POSITION,
                 MoveCommandMotionGeneratorMode.kJointVelocity: ControlMode.VELOCITY,
                 MoveCommandMotionGeneratorMode.kCartesianPosition: ControlMode.CARTESIAN_POSITION,
                 MoveCommandMotionGeneratorMode.kCartesianVelocity: ControlMode.CARTESIAN_VELOCITY,
             }[motion_generator_mode]
-            if self.control_mode == ControlMode.POSITION:
-                self.current_control_command = UDPCommand(q_c=tuple(self.robot.state.q))
-            elif self.control_mode == ControlMode.CARTESIAN_POSITION:
-                self.current_control_command = UDPCommand(O_T_EE_c=tuple(self.robot_state.O_T_EE))
+            if self._control_mode == ControlMode.POSITION:
+                self._current_control_command = UDPCommand(q_c=tuple(self._robot.state.q))
+            elif self._control_mode == ControlMode.CARTESIAN_POSITION:
+                self._current_control_command = UDPCommand(O_T_EE_c=tuple(self._robot_state.O_T_EE))
             if controller_mode == MoveCommandControllerMode.kJointImpedance:
-                self.impedance_control_mode = ImpedanceControlMode.JOINT_IMPEDANCE
+                self._impedance_control_mode = ImpedanceControlMode.JOINT_IMPEDANCE
             elif controller_mode == MoveCommandControllerMode.kCartesianImpedance:
-                self.impedance_control_mode = ImpedanceControlMode.CARTESIAN_IMPEDANCE
+                self._impedance_control_mode = ImpedanceControlMode.CARTESIAN_IMPEDANCE
             else:
                 raise ValueError(
                     f"Invalid controller mode: {controller_mode.name} for motion generator mode "
@@ -214,38 +213,38 @@ class RobotServer:
                 )
 
     def stop_motion(self):
-        self.control_mode = ControlMode.IDLE
-        self.holding_q = tuple(self.robot.state.q_d)
-        self.current_control_command = UDPCommand()
-        self.impedance_control_mode = ImpedanceControlMode.NONE
+        self._control_mode = ControlMode.IDLE
+        self._holding_q = tuple(self._robot.state.q_d)
+        self._current_control_command = UDPCommand()
+        self._impedance_control_mode = ImpedanceControlMode.NONE
 
     def setup_udp_connection(self, network_udp_port: int):
-        self.client_udp_port = network_udp_port
+        self._client_udp_port = network_udp_port
 
-        self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.udp_socket.bind(("0.0.0.0", 0))
-        self.udp_socket.setblocking(False)
-        self.udp_receiver = NonBlockingReceiver(self.udp_socket)
-        self.message_id = 0
+        self._udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._udp_socket.bind(("0.0.0.0", 0))
+        self._udp_socket.setblocking(False)
+        self._udp_receiver = NonBlockingReceiver(self._udp_socket)
+        self._message_id = 0
 
-        logger.info(f"Client connected. UDP port: {self.client_udp_port}")
+        logger.info(f"Client connected. UDP port: {self._client_udp_port}")
 
     def process_commands(self):
         self._process_tcp_commands()
         has_new_command = self._process_udp_commands()
 
-        if self.control_mode == ControlMode.POSITION:
-            self.robot.joint_position_control(
-                np.array(self.current_control_command.q_c),
+        if self._control_mode == ControlMode.POSITION:
+            self._robot.joint_position_control(
+                np.array(self._current_control_command.q_c),
                 has_new_command=has_new_command,
             )
-        elif self.control_mode == ControlMode.VELOCITY:
-            self.robot.joint_velocity_control(
-                np.array(self.current_control_command.dq_c),
+        elif self._control_mode == ControlMode.VELOCITY:
+            self._robot.joint_velocity_control(
+                np.array(self._current_control_command.dq_c),
                 has_new_command=has_new_command,
             )
-        elif self.control_mode == ControlMode.CARTESIAN_POSITION:
-            mat = np.array(self.current_control_command.O_T_EE_c).reshape((4, 4), order="F")
+        elif self._control_mode == ControlMode.CARTESIAN_POSITION:
+            mat = np.array(self._current_control_command.O_T_EE_c).reshape((4, 4), order="F")
             translation = mat[:3, 3]
             rotation = mat[:3, :3]
             quat = pin.Quaternion(rotation)
@@ -260,49 +259,49 @@ class RobotServer:
                     quat.w,
                 ]
             )
-            self.robot.cartesian_position_control(
+            self._robot.cartesian_position_control(
                 target_pose,
                 (
-                    np.array(self.current_control_command.elbow_c)
-                    if self.current_control_command.valid_elbow
+                    np.array(self._current_control_command.elbow_c)
+                    if self._current_control_command.valid_elbow
                     else None
                 ),
                 has_new_command=has_new_command,
             )
-        elif self.control_mode == ControlMode.CARTESIAN_VELOCITY:
-            self.robot.cartesian_velocity_control(
-                np.array(self.current_control_command.O_dP_EE_c),
+        elif self._control_mode == ControlMode.CARTESIAN_VELOCITY:
+            self._robot.cartesian_velocity_control(
+                np.array(self._current_control_command.O_dP_EE_c),
                 (
-                    np.array(self.current_control_command.elbow_c)
-                    if self.current_control_command.valid_elbow
+                    np.array(self._current_control_command.elbow_c)
+                    if self._current_control_command.valid_elbow
                     else None
                 ),
                 has_new_command=has_new_command,
             )
-        elif self.control_mode == ControlMode.TORQUE:
-            self.robot.torque_control(
-                np.array(self.current_control_command.tau_J_d),
+        elif self._control_mode == ControlMode.TORQUE:
+            self._robot.torque_control(
+                np.array(self._current_control_command.tau_J_d),
                 has_new_command=has_new_command,
             )
-        elif self.control_mode == ControlMode.IDLE:
-            self.robot.joint_position_control(np.array(self.holding_q))
+        elif self._control_mode == ControlMode.IDLE:
+            self._robot.joint_position_control(np.array(self._holding_q))
 
     def _process_tcp_commands(self):
         if not self.tcp_connected:
             try:
-                client_sock, addr = self.server_socket.accept()
+                client_sock, addr = self._server_socket.accept()
                 client_sock.setblocking(False)
                 client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
                 self.reset_state()
-                self.tcp_socket = client_sock
-                self.tcp_receiver = MessageReceiver(self.tcp_socket)
-                self.client_address = addr[0]
+                self._tcp_socket = client_sock
+                self._tcp_receiver = MessageReceiver(self._tcp_socket)
+                self._client_address = addr[0]
                 logger.info(f"Accepted new connection from {addr} on port {COMMAND_PORT}")
             except BlockingIOError:
                 return
 
-        header, payload = self.tcp_receiver.receive()
+        header, payload = self._tcp_receiver.receive()
         if header:
             if header.command != Command.kConnect and not self.udp_connected:
                 logger.warning("Received command before connect.")
@@ -310,7 +309,7 @@ class RobotServer:
 
             command_class = COMMAND_CLASS_MAP.get(header.command)
             if command_class:
-                cmd = command_class.from_bytes(payload or b"", header.command_id, self.tcp_socket)
+                cmd = command_class.from_bytes(payload or b"", header.command_id, self._tcp_socket)
                 cmd.handle(self)
             else:
                 logger.warning(f"Unhandled command: {Command(header.command).name}")
@@ -323,7 +322,7 @@ class RobotServer:
 
         has_new_command = False
         while True:
-            data = self.udp_receiver.receive(expected_size)
+            data = self._udp_receiver.receive(expected_size)
             if data:
                 self._handle_udp_command(data)
                 has_new_command = True
@@ -338,57 +337,57 @@ class RobotServer:
             if cmd.motion_generation_finished:
                 self.stop_motion()
 
-                if self.current_motion_id:
+                if self._current_motion_id:
                     BaseCommand.send_response(
-                        self.tcp_socket,
+                        self._tcp_socket,
                         Command.kMove,
-                        self.current_motion_id,
+                        self._current_motion_id,
                         MoveStatus.kSuccess,
                     )
-                    self.current_motion_id = 0
+                    self._current_motion_id = 0
 
             else:
-                self.current_control_command = cmd
+                self._current_control_command = cmd
 
     def send_state(self):
         if not self.udp_connected:
             return
 
         state_bytes = self.robot_state.pack_state()
-        message_id_bytes = struct.pack("<Q", self.message_id)
-        self.udp_socket.sendto(
-            message_id_bytes + state_bytes, (self.client_address, self.client_udp_port)
+        message_id_bytes = struct.pack("<Q", self._message_id)
+        self._udp_socket.sendto(
+            message_id_bytes + state_bytes, (self._client_address, self._client_udp_port)
         )
 
-        if self.current_motion_id and self.message_id == 0:
+        if self._current_motion_id and self._message_id == 0:
             BaseCommand.send_response(
-                self.tcp_socket,
+                self._tcp_socket,
                 Command.kMove,
-                self.current_motion_id,
+                self._current_motion_id,
                 MoveStatus.kSuccess,
             )
 
-        self.message_id += 1
+        self._message_id += 1
 
     @property
     def udp_connected(self):
-        return self.udp_socket is not None
+        return self._udp_socket is not None
 
     @property
     def tcp_connected(self):
-        return self.tcp_socket is not None
+        return self._tcp_socket is not None
 
     @property
     def robot_state(self) -> FrankaRobotState:
-        robot_mode = RobotMode.kMove if self.current_motion_id > 0 else RobotMode.kIdle
+        robot_mode = RobotMode.kMove if self._current_motion_id > 0 else RobotMode.kIdle
 
-        if self.control_mode == ControlMode.TORQUE:
+        if self._control_mode == ControlMode.TORQUE:
             controller_mode = StateControllerMode.kExternalController
             motion_generator_mode = StateMotionGeneratorMode.kIdle
         else:
-            if self.impedance_control_mode == ImpedanceControlMode.JOINT_IMPEDANCE:
+            if self._impedance_control_mode == ImpedanceControlMode.JOINT_IMPEDANCE:
                 controller_mode = StateControllerMode.kJointImpedance
-            elif self.impedance_control_mode == ImpedanceControlMode.CARTESIAN_IMPEDANCE:
+            elif self._impedance_control_mode == ImpedanceControlMode.CARTESIAN_IMPEDANCE:
                 controller_mode = StateControllerMode.kCartesianImpedance
             else:
                 controller_mode = StateControllerMode.kOther
@@ -398,10 +397,29 @@ class RobotServer:
                 ControlMode.CARTESIAN_POSITION: StateMotionGeneratorMode.kCartesianPosition,
                 ControlMode.CARTESIAN_VELOCITY: StateMotionGeneratorMode.kCartesianVelocity,
                 ControlMode.IDLE: StateMotionGeneratorMode.kIdle,
-            }[self.control_mode]
+            }[self._control_mode]
 
-        return self.robot.state.replace(
+        return self._robot.state.replace(
             robot_mode=robot_mode,
             controller_mode=controller_mode,
             motion_generator_mode=motion_generator_mode,
         )
+
+    def reset_current_motion_id(self):
+        self._current_motion_id = 0
+
+    @property
+    def robot(self):
+        return self._robot
+
+    @property
+    def hostname(self):
+        return self._hostname
+
+    @property
+    def library_version(self):
+        return 9
+
+    @property
+    def current_motion_id(self):
+        return self._current_motion_id

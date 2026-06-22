@@ -375,14 +375,7 @@ class StopMoveCommand(BaseCommand):
             server.stop_motion()
 
             # Send one final state with both modes set to idle
-            if server.udp_socket:
-                final_state = server.robot_state.pack_state()
-                message_id_bytes = struct.pack("<Q", server.message_id)
-                server.udp_socket.sendto(
-                    message_id_bytes + final_state, (server.client_address, server.client_udp_port)
-                )
-                logger.info(f"Sent final robot state with message_id: {server.message_id}")
-                server.message_id += 1
+            server.send_state()
 
             # Send Move response to break the waiting loop in the client
             if server.current_motion_id:
@@ -398,7 +391,7 @@ class StopMoveCommand(BaseCommand):
                 except Exception as e:
                     logger.error(f"Error sending Move success response inside StopMove: {e}")
 
-                server.current_motion_id = 0
+                server.reset_current_motion_id()
 
         except Exception as e:
             logger.error(f"Error handling StopMove command: {e}")
