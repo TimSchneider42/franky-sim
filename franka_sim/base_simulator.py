@@ -4,12 +4,15 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Generic, Sequence, TypeVar
+from typing import TYPE_CHECKING, Callable, Generic, Sequence, TypeVar
 
 import numpy as np
 import pinocchio as pin
 
 from .franka_robot_state import FrankaRobotState
+
+if TYPE_CHECKING:
+    from .robot_server import RobotServer
 
 
 @dataclass(frozen=True)
@@ -220,6 +223,7 @@ class BaseRobot(ABC):
         self.model = pin.buildModelFromUrdf(
             str(Path(__file__).parent / "assets" / "fr3_clean.urdf")
         )
+        self._server = None
 
         # Add End-Effector properties to the model
         frame_id = self.model.getFrameId(self.ee_frame_name)
@@ -749,9 +753,22 @@ class BaseRobot(ABC):
         self.prev_t = self.t
         self.t += 0.001
 
+    def _set_server(self, server: "RobotServer"):
+        self._server = server
+
     @property
     def inner_state(self):
         return self._get_state()
+
+    @property
+    def server(self) -> "RobotServer | None":
+        return self._server
+
+    @property
+    def hostname(self):
+        if self._server is None:
+            return None
+        return self._server.hostname
 
 
 class BaseSimulator(ABC):

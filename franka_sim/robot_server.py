@@ -133,6 +133,7 @@ class RobotServer:
         self.udp_receiver: Optional[NonBlockingReceiver] = None
 
         self.holding_q: Optional[tuple[float, ...]] = None
+        robot._set_server(self)
 
     def init(self):
         if self.server_socket:
