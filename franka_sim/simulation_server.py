@@ -26,6 +26,7 @@ class SimulationServer:
             rs = RobotServer(robot, self.robot_hostnames(i))
             rs.init()
             self.robot_servers.append(rs)
+        self.sim.start()
 
     def run_once(self, realtime: bool | float = True):
         start_time = time.time()

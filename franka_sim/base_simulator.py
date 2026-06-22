@@ -762,6 +762,7 @@ class BaseSimulator(ABC):
 
     def __init__(self):
         self._is_initialized = False
+        self._is_started = False
         self._is_cleaned_up = False
 
     def init(self):
@@ -774,6 +775,20 @@ class BaseSimulator(ABC):
         self._is_initialized = True
 
     def _init(self):
+        pass
+
+    def start(self):
+        """Start or initialize the simulation."""
+        if self._is_started:
+            raise RuntimeError("Simulation is already started.")
+        if not self._is_initialized:
+            raise RuntimeError("Simulation is not initialized.")
+        if self._is_cleaned_up:
+            raise RuntimeError("Simulation has been cleaned up and cannot be reused.")
+        self._start()
+        self._is_started = True
+
+    def _start(self):
         pass
 
     def cleanup(self):
@@ -790,8 +805,8 @@ class BaseSimulator(ABC):
 
     def step(self):
         """Advance the physics simulation by one step."""
-        if not self._is_initialized:
-            raise RuntimeError("Cannot step an uninitialized simulation.")
+        if not self._is_started:
+            raise RuntimeError("Cannot step a non-started simulation.")
         if self._is_cleaned_up:
             raise RuntimeError("Cannot step a cleaned up simulation.")
         for r in self._get_robots():
@@ -822,3 +837,15 @@ class BaseSimulator(ABC):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cleanup()
+
+    @property
+    def is_initialized(self) -> bool:
+        return self._is_initialized
+
+    @property
+    def is_started(self) -> bool:
+        return self._is_started
+
+    @property
+    def is_cleaned_up(self) -> bool:
+        return self._is_cleaned_up

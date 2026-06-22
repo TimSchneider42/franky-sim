@@ -132,7 +132,7 @@ class RobotServer:
         self.tcp_receiver: Optional[MessageReceiver] = None
         self.udp_receiver: Optional[NonBlockingReceiver] = None
 
-        self.holding_q: Optional[tuple[float, ...]] = tuple(self.robot.inner_state.q)
+        self.holding_q: Optional[tuple[float, ...]] = None
 
     def init(self):
         if self.server_socket:
@@ -177,6 +177,7 @@ class RobotServer:
         self.udp_receiver = None
 
         self.message_id = 0
+        self.holding_q = tuple(self.robot.inner_state.q)
 
     def start_motion(
         self,
