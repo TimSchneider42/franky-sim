@@ -278,7 +278,6 @@ class BaseRobot(ABC):
         )
 
         self.data = self.model.createData()
-        self.data_d = self.model.createData()
 
         self.gravity = np.array(gravity)
         self.model.gravity.linear = self.gravity
@@ -439,7 +438,7 @@ class BaseRobot(ABC):
     def d_kinematics(self, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
         jacobian = pin.computeFrameJacobian(
             self.model,
-            self.data_d,
+            self.data,
             q,
             self._tcp_frame_id,
             pin.ReferenceFrame.LOCAL_WORLD_ALIGNED,
