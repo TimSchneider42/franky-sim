@@ -201,7 +201,7 @@ class RobotServer:
             if self._control_mode == ControlMode.POSITION:
                 self._current_control_command = UDPCommand(q_c=tuple(self._robot.state.q))
             elif self._control_mode == ControlMode.CARTESIAN_POSITION:
-                self._current_control_command = UDPCommand(O_T_EE_c=tuple(self._robot_state.O_T_EE))
+                self._current_control_command = UDPCommand(O_T_EE_c=tuple(self.robot_state.O_T_EE))
             if controller_mode == MoveCommandControllerMode.kJointImpedance:
                 self._impedance_control_mode = ImpedanceControlMode.JOINT_IMPEDANCE
             elif controller_mode == MoveCommandControllerMode.kCartesianImpedance:
