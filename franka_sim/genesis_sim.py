@@ -5,55 +5,36 @@ from pathlib import Path
 
 import genesis as gs
 import numpy as np
+from genesis.engine.entities import RigidEntity
 
-from .base_simulator import BaseRobot, BaseSimulator, ControlMode, RobotState
+from .base_simulator import BaseRobot, BaseSimulator, InnerRobotState
 
 logger = logging.getLogger(__name__)
+
+gs.init()
 
 
 class FrankaGenesisRobot(BaseRobot):
     def __init__(
         self,
-        scene: gs.Scene,
-        franka: gs.Entity,
+        franka: RigidEntity,
         gravity: tuple[float, float, float] = (0.0, 0.0, -9.81),
     ):
         super().__init__("fr3_link8", gravity=gravity)
-
-        self.scene = scene
-        self.franka = franka
-        self.dt = scene.sim_options.dt
-
-        self.jnt_names = [f"fr3_joint{i}" for i in range(1, 8)]
-        self.dofs_idx = [self.franka.get_joint(name).dofs_idx_local[0] for name in self.jnt_names]
-
-        self.latest_torques: np.ndarray = np.zeros(7)
-        self.latest_joint_positions: np.ndarray = np.zeros(7)
-        self.latest_joint_velocities: np.ndarray = np.zeros(7)
-        self.ddq_filtered: np.ndarray = np.zeros(7)
-        self.prev_dq_full: np.ndarray = np.zeros(7)
+        self.entity = franka
+        self.dofs_idx = [
+            self.entity.get_joint(f"fr3_joint{i}").dofs_idx_local[0] for i in range(1, 8)
+        ]
 
     def _torque_control(self, torques: np.ndarray) -> None:
         self.latest_torques = np.array(torques)
-        self.franka.control_dofs_force(self.latest_torques, self.dofs_idx)
+        self.entity.control_dofs_force(self.latest_torques, self.dofs_idx)
 
-    def _get_state(self) -> RobotState:
-        q_full = self.franka.get_dofs_position(self.dofs_idx).cpu().numpy()
-        dq_full = self.franka.get_dofs_velocity(self.dofs_idx).cpu().numpy()
-
-        ddq_raw = (dq_full - self.prev_dq_full) / self.dt
-        alpha_acc = 0.95
-        self.ddq_filtered = alpha_acc * self.ddq_filtered + (1 - alpha_acc) * ddq_raw
-        self.prev_dq_full = dq_full.copy()
-
-        return RobotState(
-            q=tuple(q_full[:7]),
-            dq=tuple(dq_full[:7]),
-            ddq=tuple(self.ddq_filtered[:7]),
-            q_d=tuple(self.latest_joint_positions),
-            dq_d=tuple(self.latest_joint_velocities),
-            ddq_d=tuple(np.zeros(7)),
-            tau_J=tuple(self.latest_torques),
+    def _get_state(self) -> InnerRobotState:
+        return InnerRobotState(
+            q=tuple(self.entity.get_dofs_position(self.dofs_idx).cpu().numpy()),
+            dq=tuple(self.entity.get_dofs_velocity(self.dofs_idx).cpu().numpy()),
+            tau_j=tuple(self.entity.get_dofs_force(self.dofs_idx).cpu().numpy()),
         )
 
 
@@ -65,18 +46,11 @@ class SimpleFrankaGenesisSim(BaseSimulator):
         self.enable_vis = enable_vis
         self.gravity = gravity
         self.scene: gs.Scene | None = None
-        self.franka: gs.Entity | None = None
+        self.franka: RigidEntity | None = None
         self.robot: FrankaGenesisRobot | None = None
         self.dt: float = 0.001
-        self.urdf_path = Path(__file__).parent / "assets" / "fr3.urdf"
 
     def _init(self) -> None:
-        try:
-            gs.init()
-        except gs.GenesisException as e:
-            if "Genesis already initialized" not in str(e):
-                raise e
-
         self.scene = gs.Scene(
             viewer_options=gs.options.ViewerOptions(
                 camera_pos=(0, -3.5, 2.5),
@@ -95,13 +69,13 @@ class SimpleFrankaGenesisSim(BaseSimulator):
 
         self.scene.add_entity(gs.morphs.Plane())
         self.franka = self.scene.add_entity(
-            gs.morphs.URDF(file=str(self.urdf_path), fixed=True),
+            gs.morphs.URDF(file=str(Path(__file__).parent / "assets" / "fr3.urdf"), fixed=True),
             material=gs.materials.Rigid(gravity_compensation=0.0),
         )
 
         self.scene.build()
 
-        self.robot = FrankaGenesisRobot(self.scene, self.franka, gravity=self.gravity)
+        self.robot = FrankaGenesisRobot(self.franka, gravity=self.gravity)
 
         self.franka.set_dofs_force_range(
             lower=np.array([-87, -87, -87, -87, -12, -12, -12]),
