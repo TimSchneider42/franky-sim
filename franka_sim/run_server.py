@@ -5,7 +5,7 @@ import argparse
 import logging
 
 from franka_sim import SimulationServer
-from franka_sim.genesis_sim import SimpleFrankaGenesisSim
+from franka_sim.genesis_sim import GenesisSimulation
 
 
 def main() -> None:
@@ -39,7 +39,7 @@ def main() -> None:
     print("Press Ctrl+C to stop the server")
 
     # Create the simulation
-    with SimpleFrankaGenesisSim(enable_vis=args.vis) as sim:
+    with GenesisSimulation(enable_visualization=args.vis) as sim:
         with SimulationServer(sim) as server:
             try:
                 server.run_forever()
