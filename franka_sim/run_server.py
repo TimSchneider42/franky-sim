@@ -7,10 +7,10 @@ import logging
 from franka_sim import SimulationServer
 
 AVAILABLE_SIMULATORS = {}
-for s in ["genesis_sim"]:
+for s in ["genesis_simulator"]:
     try:
         module = getattr(__import__(f"franka_sim.{s}"), s)
-        name = s[:-4]
+        name = s[: -len("simulator") - 1]
         simulator = getattr(module, [e for e in dir(module) if e.lower() == name + "simulator"][0])
         display_name = simulator.__name__[: -len("simulator")]
         AVAILABLE_SIMULATORS[name] = (simulator, display_name)
