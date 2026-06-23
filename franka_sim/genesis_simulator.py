@@ -18,8 +18,8 @@ from .base_simulator import (
 from .constants import (
     DEFAULT_HAND_INITIAL_WIDTH,
     DEFAULT_INITIAL_JOINT_POS,
-    FRANKA_HAND_TORQUE_LIMIT_HIGH,
-    FRANKA_HAND_TORQUE_LIMIT_LOW,
+    FRANKA_HAND_FORCE_LIMIT_HIGH,
+    FRANKA_HAND_FORCE_LIMIT_LOW,
     FRANKA_HAND_VELOCITY_LIMIT_HIGH,
     FRANKA_HAND_VELOCITY_LIMIT_LOW,
     FRANKA_TORQUE_LIMITS_HIGH,
@@ -188,8 +188,8 @@ class GenesisSimulator(BaseSimulator):
                 dofs_idx_local=r.dofs_idx,
             )
             r.entity.set_dofs_force_range(
-                lower=np.full(2, FRANKA_HAND_TORQUE_LIMIT_LOW, dtype=float),
-                upper=np.full(2, FRANKA_HAND_TORQUE_LIMIT_HIGH, dtype=float),
+                lower=np.full(2, FRANKA_HAND_FORCE_LIMIT_LOW, dtype=float),
+                upper=np.full(2, FRANKA_HAND_FORCE_LIMIT_HIGH, dtype=float),
                 dofs_idx_local=r.hand_dofs_idx,
             )
             r.entity.set_dofs_velocity_range(
