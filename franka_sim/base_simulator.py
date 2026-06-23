@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Callable, Generic, Sequence, TypeVar
 import numpy as np
 import pinocchio as pin
 
+from .constants import FRANKA_TORQUE_LIMITS_HIGH, FRANKA_TORQUE_LIMITS_LOW
 from .franka_robot_state import FrankaRobotState
 
 if TYPE_CHECKING:
@@ -480,7 +481,7 @@ class BaseRobot(ABC):
         self.EE_T_K = ee_t_k
 
     def torque_control(self, torques: Sequence[float], has_new_command: bool = True):
-        torques = np.asarray(torques)
+        torques = np.clip(np.asarray(torques), FRANKA_TORQUE_LIMITS_LOW, FRANKA_TORQUE_LIMITS_HIGH)
         self._tracked_state_components["tau_J_d"].set(
             self.__t, torques, call_observers=has_new_command
         )
