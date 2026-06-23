@@ -3,24 +3,45 @@ from __future__ import annotations
 
 import argparse
 import logging
+from pathlib import Path
+from typing import Type
 
-from franka_sim import SimulationServer
+import franka_sim
+from franka_sim import BaseSimulator
 
-AVAILABLE_SIMULATORS = {}
-for s in ["genesis_simulator"]:
+SIMULATOR_NAMES = [
+    e.stem[: -len("simulator") - 1]
+    for e in Path(franka_sim.__file__).parent.iterdir()
+    if e.stem.endswith("_simulator") and e.stem != "base_simulator"
+]
+
+
+def load_simulator(
+    simulator_name: str, force_success: bool = True
+) -> tuple[Type[franka_sim.BaseSimulator], str] | None:
+    if simulator_name == "auto":
+        for name in SIMULATOR_NAMES:
+            simulator = load_simulator(name)
+            if simulator is not None:
+                return simulator
+        return None
     try:
-        module = getattr(__import__(f"franka_sim.{s}"), s)
-        name = s[: -len("simulator") - 1]
-        simulator = getattr(module, [e for e in dir(module) if e.lower() == name + "simulator"][0])
+        module_name = f"{simulator_name}_simulator"
+        module = getattr(__import__(f"franka_sim.{module_name}"), module_name)
+        simulator = getattr(
+            module,
+            [e for e in dir(module) if e.lower() == simulator_name + "simulator"][0],
+        )
         display_name = simulator.__name__[: -len("simulator")]
-        AVAILABLE_SIMULATORS[name] = (simulator, display_name)
         print(f"Successfully loaded {display_name} simulator.")
+        return simulator, display_name
     except ImportError:
-        pass
+        if force_success:
+            raise ValueError(f"Simulator {simulator_name} could not be loaded.")
+        return None
 
 
 def main() -> None:
-    """Run the Franka simulation server."""
     parser = argparse.ArgumentParser(
         description="Run a standard Franka simulation server with one robot."
     )
@@ -41,8 +62,8 @@ def main() -> None:
     parser.add_argument(
         "-s",
         "--simulator",
-        choices=AVAILABLE_SIMULATORS.keys(),
-        default=list(AVAILABLE_SIMULATORS.keys())[0],
+        choices=["auto"] + SIMULATOR_NAMES,
+        default="auto",
         help="Simulator to use.",
     )
     args = parser.parse_args()
@@ -56,7 +77,7 @@ def main() -> None:
     # Configure logging to silence Numba debug output
     logging.getLogger("numba").setLevel(logging.WARNING)
 
-    Simulator, display_name = AVAILABLE_SIMULATORS[args.simulator]
+    Simulator, display_name = load_simulator(args.simulator)
 
     print(
         f"Starting {display_name} simulation server {'with' if args.render else 'without'} "
@@ -66,7 +87,7 @@ def main() -> None:
     # Create the simulation
     with Simulator(enable_visualization=args.render) as sim:
         robot = sim.add_robot()
-        with SimulationServer(sim) as server:
+        with franka_sim.SimulationServer(sim) as server:
             print(f"Connect to the server using '{robot.hostname}' as the robot IP address")
             print("Press Ctrl+C to stop the server")
             try:
