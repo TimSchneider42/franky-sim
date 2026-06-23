@@ -290,7 +290,7 @@ class BaseRobot(ABC):
             raise ValueError("Cannot infer tau_J_d")
 
         def q_d(time, state):
-            output = np.array(state.q_d)
+            output = np.array(state.q)
             if sc["elbow_c"].has_explicit_value(time):
                 output[2] = sc["elbow_c"].get(time)[0]
             return output
