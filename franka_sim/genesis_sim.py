@@ -21,7 +21,7 @@ class FrankaGenesisRobot(BaseRobot):
     def __init__(
         self,
         franka: RigidEntity,
-        simulation: GenesisSimulation,
+        simulation: GenesisSimulator,
         gravity: tuple[float, float, float] = (0.0, 0.0, -9.81),
         initial_q: Sequence[float] = DEFAULT_INITIAL_Q,
     ):
@@ -63,7 +63,7 @@ class FrankaGenesisRobot(BaseRobot):
         return self._initial_q
 
 
-class GenesisSimulation(BaseSimulator):
+class GenesisSimulator(BaseSimulator):
     def __init__(
         self,
         enable_visualization: bool = False,
