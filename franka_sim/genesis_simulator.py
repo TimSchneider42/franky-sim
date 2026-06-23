@@ -15,15 +15,23 @@ from .base_simulator import (
     InnerRobotState,
     RobotParameters,
 )
+from .constants import (
+    DEFAULT_HAND_INITIAL_WIDTH,
+    DEFAULT_INITIAL_JOINT_POS,
+    FRANKA_HAND_TORQUE_LIMIT_HIGH,
+    FRANKA_HAND_TORQUE_LIMIT_LOW,
+    FRANKA_HAND_VELOCITY_LIMIT_HIGH,
+    FRANKA_HAND_VELOCITY_LIMIT_LOW,
+    FRANKA_TORQUE_LIMITS_HIGH,
+    FRANKA_TORQUE_LIMITS_LOW,
+)
 
 logger = logging.getLogger(__name__)
 
 gs.init()
 
-GENESIS_DEFAULT_INITIAL_Q = (0.0, 0.0, 0.0, -1.57, 0.0, 1.57, 0.785)
 GENESIS_DEFAULT_KP = (9000.0, 9000.0, 7000.0, 7000.0, 4000.0, 4000.0, 4000.0)
 GENESIS_DEFAULT_KV = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0)
-GENESIS_HAND_DEFAULT_WIDTH = 0.04
 
 
 class FrankaGenesisRobot(BaseRobot):
@@ -31,8 +39,8 @@ class FrankaGenesisRobot(BaseRobot):
         self,
         franka: RigidEntity,
         simulation: GenesisSimulator,
-        initial_q: Sequence[float] = GENESIS_DEFAULT_INITIAL_Q,
-        initial_hand_width: float = GENESIS_HAND_DEFAULT_WIDTH,
+        initial_q: Sequence[float] = DEFAULT_INITIAL_JOINT_POS,
+        initial_hand_width: float = DEFAULT_HAND_INITIAL_WIDTH,
         robot_parameters: RobotParameters = RobotParameters(),
         kp: FloatTuple7 = GENESIS_DEFAULT_KP,
         kv: FloatTuple7 = GENESIS_DEFAULT_KV,
@@ -53,7 +61,7 @@ class FrankaGenesisRobot(BaseRobot):
         self._kp_hand = np.array([1000.0, 1000.0])
         self._kv_hand = np.array([50.0, 50.0])
         self._hand_goal_width = initial_hand_width
-        self._hand_goal_velocity = 0.2
+        self._hand_goal_velocity = FRANKA_HAND_VELOCITY_LIMIT_HIGH
         self._hand_goal_force = 70.0
 
     def _torque_control(self, torques: np.ndarray) -> None:
@@ -154,8 +162,8 @@ class GenesisSimulator(BaseSimulator):
 
     def add_robot(
         self,
-        initial_q: Sequence[float] = GENESIS_DEFAULT_INITIAL_Q,
-        initial_hand_width: float = GENESIS_HAND_DEFAULT_WIDTH,
+        initial_q: Sequence[float] = DEFAULT_INITIAL_JOINT_POS,
+        initial_hand_width: float = DEFAULT_HAND_INITIAL_WIDTH,
         robot_parameters: RobotParameters = RobotParameters(),
         kp: FloatTuple7 = GENESIS_DEFAULT_KP,
         kv: FloatTuple7 = GENESIS_DEFAULT_KV,
@@ -175,13 +183,18 @@ class GenesisSimulator(BaseSimulator):
         self._scene.build()
         for r in self._robots:
             r.entity.set_dofs_force_range(
-                lower=np.array([-87, -87, -87, -87, -12, -12, -12]),
-                upper=np.array([87, 87, 87, 87, 12, 12, 12]),
+                lower=np.array(FRANKA_TORQUE_LIMITS_LOW, dtype=float),
+                upper=np.array(FRANKA_TORQUE_LIMITS_HIGH, dtype=float),
                 dofs_idx_local=r.dofs_idx,
             )
             r.entity.set_dofs_force_range(
-                lower=np.array([-140.0, -140.0]),
-                upper=np.array([140.0, 140.0]),
+                lower=np.full(2, FRANKA_HAND_TORQUE_LIMIT_LOW, dtype=float),
+                upper=np.full(2, FRANKA_HAND_TORQUE_LIMIT_HIGH, dtype=float),
+                dofs_idx_local=r.hand_dofs_idx,
+            )
+            r.entity.set_dofs_velocity_range(
+                lower=np.full(2, FRANKA_HAND_VELOCITY_LIMIT_LOW, dtype=float),
+                upper=np.full(2, FRANKA_HAND_VELOCITY_LIMIT_HIGH, dtype=float),
                 dofs_idx_local=r.hand_dofs_idx,
             )
         for _ in range(100):
