@@ -18,10 +18,8 @@ from .base_simulator import (
 from .constants import (
     DEFAULT_HAND_INITIAL_WIDTH,
     DEFAULT_INITIAL_JOINT_POS,
-    FRANKA_HAND_FORCE_LIMIT_HIGH,
-    FRANKA_HAND_FORCE_LIMIT_LOW,
-    FRANKA_HAND_VELOCITY_LIMIT_HIGH,
-    FRANKA_HAND_VELOCITY_LIMIT_LOW,
+    FRANKA_HAND_FORCE_LIMIT,
+    FRANKA_HAND_VELOCITY_LIMIT,
     FRANKA_TORQUE_LIMITS_HIGH,
     FRANKA_TORQUE_LIMITS_LOW,
 )
@@ -61,7 +59,7 @@ class FrankaGenesisRobot(BaseRobot):
         self._kp_hand = np.array([1000.0, 1000.0])
         self._kv_hand = np.array([50.0, 50.0])
         self._hand_goal_width = initial_hand_width
-        self._hand_goal_velocity = FRANKA_HAND_VELOCITY_LIMIT_HIGH
+        self._hand_goal_velocity = FRANKA_HAND_VELOCITY_LIMIT
         self._hand_goal_force = 70.0
 
     def _torque_control(self, torques: np.ndarray) -> None:
@@ -92,8 +90,8 @@ class FrankaGenesisRobot(BaseRobot):
 
     def set_hand_goal(self, width: float, max_velocity: float, max_force: float) -> None:
         self._hand_goal_width = float(width)
-        self._hand_goal_velocity = float(max_velocity)
-        self._hand_goal_force = float(max_force)
+        self._hand_goal_velocity = min(float(max_velocity), FRANKA_HAND_VELOCITY_LIMIT)
+        self._hand_goal_force = min(float(max_force), FRANKA_HAND_FORCE_LIMIT)
 
     def _pre_step(self) -> None:
         if self._simulation.is_started:
@@ -173,7 +171,13 @@ class GenesisSimulator(BaseSimulator):
             material=gs.materials.Rigid(gravity_compensation=0.0),
         )
         robot = FrankaGenesisRobot(
-            entity, self, initial_q=initial_q, robot_parameters=robot_parameters, kp=kp, kv=kv
+            entity,
+            self,
+            initial_q=initial_q,
+            initial_hand_width=initial_hand_width,
+            robot_parameters=robot_parameters,
+            kp=kp,
+            kv=kv,
         )
         entity.latest_joint_positions = np.array(initial_q)
         self._robots += (robot,)
@@ -188,13 +192,8 @@ class GenesisSimulator(BaseSimulator):
                 dofs_idx_local=r.dofs_idx,
             )
             r.entity.set_dofs_force_range(
-                lower=np.full(2, FRANKA_HAND_FORCE_LIMIT_LOW, dtype=float),
-                upper=np.full(2, FRANKA_HAND_FORCE_LIMIT_HIGH, dtype=float),
-                dofs_idx_local=r.hand_dofs_idx,
-            )
-            r.entity.set_dofs_velocity_range(
-                lower=np.full(2, FRANKA_HAND_VELOCITY_LIMIT_LOW, dtype=float),
-                upper=np.full(2, FRANKA_HAND_VELOCITY_LIMIT_HIGH, dtype=float),
+                lower=np.full(2, -FRANKA_HAND_FORCE_LIMIT, dtype=float),
+                upper=np.full(2, FRANKA_HAND_FORCE_LIMIT, dtype=float),
                 dofs_idx_local=r.hand_dofs_idx,
             )
         for _ in range(100):
