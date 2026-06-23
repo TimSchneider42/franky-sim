@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 gs.init()
 
-DEFAULT_INITIAL_Q = (0.0, 0.0, 0.0, -1.57, 0.0, 1.57, 0.785)
+GENESIS_DEFAULT_INITIAL_Q = (0.0, 0.0, 0.0, -1.57, 0.0, 1.57, 0.785)
+GENESIS_DEFAULT_KP = (9000.0, 9000.0, 7000.0, 7000.0, 4000.0, 4000.0, 4000.0)
+GENESIS_DEFAULT_KV = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0)
 
 
 class FrankaGenesisRobot(BaseRobot):
@@ -28,10 +30,10 @@ class FrankaGenesisRobot(BaseRobot):
         self,
         franka: RigidEntity,
         simulation: GenesisSimulator,
-        initial_q: Sequence[float] = DEFAULT_INITIAL_Q,
+        initial_q: Sequence[float] = GENESIS_DEFAULT_INITIAL_Q,
         robot_parameters: RobotParameters = RobotParameters(),
-        kp: FloatTuple7 = (9000.0, 9000.0, 7000.0, 7000.0, 4000.0, 4000.0, 4000.0),
-        kv: FloatTuple7 = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0),
+        kp: FloatTuple7 = GENESIS_DEFAULT_KP,
+        kv: FloatTuple7 = GENESIS_DEFAULT_KV,
     ):
         super().__init__(robot_parameters=robot_parameters, kp=kp, kv=kv)
         self._entity = franka
@@ -102,10 +104,10 @@ class GenesisSimulator(BaseSimulator):
 
     def add_robot(
         self,
-        initial_q: Sequence[float] = DEFAULT_INITIAL_Q,
+        initial_q: Sequence[float] = GENESIS_DEFAULT_INITIAL_Q,
         robot_parameters: RobotParameters = RobotParameters(),
-        kp: FloatTuple7 = (9000.0, 9000.0, 7000.0, 7000.0, 4000.0, 4000.0, 4000.0),
-        kv: FloatTuple7 = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0),
+        kp: FloatTuple7 = GENESIS_DEFAULT_KP,
+        kv: FloatTuple7 = GENESIS_DEFAULT_KV,
     ) -> FrankaGenesisRobot:
         entity = self._scene.add_entity(
             gs.morphs.URDF(file=str(Path(__file__).parent / "assets" / "fr3.urdf"), fixed=True),
