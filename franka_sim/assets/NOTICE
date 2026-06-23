@@ -1,6 +1,12 @@
-franka_description
+fr3.urdf, fr3_clean.urdf and the STL and DAE files in the assets directory were generated/taken from
+https://github.com/frankarobotics/franka_description
 
 Copyright 2023 Franka Robotics GmbH
+
+fr3.xml and the OBJ files in the assets directory were taken from https://github.com/google-deepmind/mujoco_menagerie.
+fr3.xml was modified by adding the gripper defined in panda.xml of the same repository.
+
+Copyright 2026 Google DeepMind
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

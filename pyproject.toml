@@ -9,9 +9,7 @@ requires-python = ">=3.8"
 dynamic = ["version"]  # Use dynamic versioning from git tags
 dependencies = [
     "numpy",
-    "genesis-world",
-    "numba",
-    "torch>=2.0.0",
+    "mujoco",
     "pytest",
     "pin"
 ]
@@ -42,6 +40,9 @@ classifiers = [
 run-server = "franka_sim.run_server:main"
 
 [project.optional-dependencies]
+genesis = [
+    "genesis-world",
+]
 dev = [
     "pre-commit>=3.5.0",
     "black>=24.1.1",
