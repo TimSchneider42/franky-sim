@@ -5,13 +5,13 @@ import logging
 import socket
 import struct
 import typing
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from .franka_server import BaseCommand, MessageHeader
 from .urdf import FR3_URDF
 
 if typing.TYPE_CHECKING:
-    from .robot_server import RobotServer
+    from .franka_robot_server import RobotServer
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +19,9 @@ logger = logging.getLogger(__name__)
 COMMAND_PORT = 1337
 
 
-class Command(enum.IntEnum):
+class RobotCommand(enum.IntEnum):
     """Commands supported by the Franka robot interface protocol"""
 
-    kConnect = 0
     kMove = 1
     kStopMove = 2
     kSetCollisionBehavior = 3
@@ -34,13 +33,6 @@ class Command(enum.IntEnum):
     kSetLoad = 9
     kAutomaticErrorRecovery = 10
     kGetRobotModel = 11
-
-
-class ConnectStatus(enum.IntEnum):
-    """Connection status codes for the Franka protocol"""
-
-    kSuccess = 0
-    kIncompatibleLibraryVersion = 1
 
 
 class MoveStatus(enum.IntEnum):
@@ -122,92 +114,6 @@ class RobotMode(enum.IntEnum):
     kAutomaticErrorRecovery = 6
 
 
-@dataclass
-class MessageHeader:
-    """
-    Represents the message header structure from libfranka.
-    All messages begin with this 12-byte header.
-    """
-
-    command: Command  # Command type (uint32)
-    command_id: int  # Unique command identifier (uint32)
-    size: int  # Total message size including header (uint32)
-
-    @classmethod
-    def from_bytes(cls, data: bytes) -> "MessageHeader":
-        """Parse header from binary data using little-endian format"""
-        command, command_id, size = struct.unpack("<III", data)
-        return cls(Command(command), command_id, size)
-
-    def to_bytes(self) -> bytes:
-        """Convert header to binary format using little-endian"""
-        return struct.pack("<III", self.command.value, self.command_id, self.size)
-
-
-@dataclass
-class BaseCommand(ABC):
-    command_id: int
-    client_socket: "socket.socket"
-
-    command_type: typing.ClassVar[Command]
-
-    def reply(self, status: typing.Union[enum.IntEnum, int], payload: bytes = b"") -> None:
-        """Send a standard command response with status, padding, and an optional payload."""
-        self.send_response(self.client_socket, self.command_type, self.command_id, status, payload)
-
-    @classmethod
-    def send_response(
-        cls,
-        client_socket: "socket.socket",
-        command_type: Command,
-        command_id: int,
-        status: typing.Union[enum.IntEnum, int],
-        payload: bytes = b"",
-    ) -> None:
-        """
-        Send a standard command response with status, padding, and an optional payload without
-        instantiating a command.
-        """
-        try:
-            total_size = 12 + 1 + len(payload)  # Header (12) + status (1) + payload
-            header = MessageHeader(command_type, command_id, total_size)
-            header_bytes = header.to_bytes()
-
-            status_name = status.name if hasattr(status, "name") else str(status)
-            status_value = status.value if hasattr(status, "value") else status
-
-            logger.debug(
-                f"Sending {command_type.name} response with status: {status_name} "
-                f"(value={status_value})"
-            )
-            response_data = struct.pack("<B", status_value)
-
-            message = header_bytes + response_data + payload
-            if not payload:
-                logger.debug(f"Sending {command_type.name} response message: {message.hex()}")
-            else:
-                logger.debug(
-                    f"Sending {command_type.name} response message with {len(payload)} bytes "
-                    f"payload"
-                )
-            client_socket.sendall(message)
-            logger.info(
-                f"Sent {command_type.name} response: command_id={command_id}, status={status_name}"
-            )
-        except Exception as e:
-            logger.error(f"Error sending {command_type.name} response: {e}", exc_info=True)
-
-    @classmethod
-    def from_bytes(
-        cls, data: bytes, command_id: int, client_socket: "socket.socket"
-    ) -> "BaseCommand":
-        raise NotImplementedError
-
-    @abstractmethod
-    def handle(self, server: "RobotServer"):
-        pass
-
-
 @dataclass(frozen=True)
 class UDPCommand:
     """Represents a UDP command from the client"""
@@ -255,51 +161,8 @@ class UDPCommand:
 
 
 @dataclass
-class ConnectCommand(BaseCommand):
-    """Represents a Connect command request"""
-
-    command_type = Command.kConnect
-
-    version: int
-    network_udp_port: int
-
-    @classmethod
-    def from_bytes(
-        cls, data: bytes, command_id: int, client_socket: "socket.socket"
-    ) -> "ConnectCommand":
-        if len(data) >= 4:
-            version, network_udp_port = struct.unpack("<HH", data[:4])
-            return cls(command_id, client_socket, version, network_udp_port)
-        raise ValueError("Payload too short for Connect command")
-
-    def handle(self, server: "RobotServer"):
-        if server.udp_connected:
-            logger.warning("Received connect command but already connected.")
-            return
-
-        try:
-            total_size = 12 + 8
-            header = MessageHeader(self.command_type, self.command_id, total_size)
-            header_bytes = header.to_bytes()
-            response_data = struct.pack(
-                "<HH4x", ConnectStatus.kSuccess.value, server.library_version
-            )
-
-            try:
-                self.client_socket.sendall(header_bytes + response_data)
-            except BlockingIOError:
-                pass
-
-            server.setup_udp_connection(self.network_udp_port)
-        except Exception as e:
-            logger.error(f"Error handling Connect command: {e}")
-
-
-@dataclass
 class MoveCommand(BaseCommand):
     """Represents a Move command request"""
-
-    command_type = Command.kMove
 
     controller_mode: MoveCommandControllerMode
     motion_generator_mode: MoveCommandMotionGeneratorMode
@@ -307,6 +170,7 @@ class MoveCommand(BaseCommand):
     maximum_goal_pose_deviation: tuple  # (translation, rotation, elbow)
 
     STRUCT = struct.Struct("<II ddd ddd")
+    command_type = RobotCommand.kMove
 
     @classmethod
     def from_bytes(
@@ -331,7 +195,12 @@ class MoveCommand(BaseCommand):
         goal_dev = unpacked[5:8]
 
         return cls(
-            command_id, client_socket, controller_mode, motion_generator_mode, path_dev, goal_dev
+            command_id,
+            client_socket,
+            controller_mode,
+            motion_generator_mode,
+            path_dev,
+            goal_dev,
         )
 
     def handle(self, server: "RobotServer"):
@@ -357,7 +226,7 @@ class MoveCommand(BaseCommand):
 
 @dataclass
 class StopMoveCommand(BaseCommand):
-    command_type = Command.kStopMove
+    command_type = RobotCommand.kStopMove
 
     @classmethod
     def from_bytes(
@@ -381,7 +250,7 @@ class StopMoveCommand(BaseCommand):
             if server.current_motion_id:
                 try:
                     total_size = 12 + 4
-                    header = MessageHeader(Command.kMove, server.current_motion_id, total_size)
+                    header = MessageHeader(RobotCommand.kMove, server.current_motion_id, total_size)
                     header_bytes = header.to_bytes()
                     response_data = struct.pack("<B3x", MoveStatus.kSuccess)
                     self.client_socket.sendall(header_bytes + response_data)
@@ -401,10 +270,10 @@ class StopMoveCommand(BaseCommand):
 
 @dataclass
 class SetEEToKCommand(BaseCommand):
-    command_type = Command.kSetEEToK
     EE_T_K: tuple[float, ...]
 
     STRUCT = struct.Struct("<16d")
+    command_type = RobotCommand.kSetEEToK
 
     @classmethod
     def from_bytes(
@@ -421,10 +290,10 @@ class SetEEToKCommand(BaseCommand):
 
 @dataclass
 class SetNEToEECommand(BaseCommand):
-    command_type = Command.kSetNEToEE
     NE_T_EE: tuple[float, ...]
 
     STRUCT = struct.Struct("<16d")
+    command_type = RobotCommand.kSetNEToEE
 
     @classmethod
     def from_bytes(
@@ -441,12 +310,12 @@ class SetNEToEECommand(BaseCommand):
 
 @dataclass
 class SetLoadCommand(BaseCommand):
-    command_type = Command.kSetLoad
     m_load: float
     F_x_Cload: tuple[float, ...]
     I_load: tuple[float, ...]
 
     STRUCT = struct.Struct("<d 3d 9d")
+    command_type = RobotCommand.kSetLoad
 
     @classmethod
     def from_bytes(
@@ -468,8 +337,6 @@ class SetLoadCommand(BaseCommand):
 class SetCollisionBehaviorCommand(BaseCommand):
     """Represents a SetCollisionBehavior command request"""
 
-    command_type = Command.kSetCollisionBehavior
-
     lower_torque_thresholds_acceleration: list[float]  # 7 elements
     upper_torque_thresholds_acceleration: list[float]  # 7 elements
     lower_torque_thresholds_nominal: list[float]  # 7 elements
@@ -480,6 +347,7 @@ class SetCollisionBehaviorCommand(BaseCommand):
     upper_force_thresholds_nominal: list[float]  # 6 elements
 
     STRUCT = struct.Struct("<7d 7d 7d 7d 6d 6d 6d 6d")
+    command_type = RobotCommand.kSetCollisionBehavior
 
     @classmethod
     def from_bytes(
@@ -536,9 +404,9 @@ class SetCollisionBehaviorCommand(BaseCommand):
 class SetJointImpedanceCommand(BaseCommand):
     """Represents a SetJointImpedance command request"""
 
-    command_type = Command.kSetJointImpedance
-
     K_theta: list[float]  # 7 elements for joint stiffness values
+
+    command_type = RobotCommand.kSetJointImpedance
 
     @classmethod
     def from_bytes(
@@ -568,9 +436,9 @@ class SetJointImpedanceCommand(BaseCommand):
 class SetCartesianImpedanceCommand(BaseCommand):
     """Represents a SetCartesianImpedance command request"""
 
-    command_type = Command.kSetCartesianImpedance
-
     K_x: list[float]  # 6 elements for cartesian stiffness values
+
+    command_type = RobotCommand.kSetCartesianImpedance
 
     @classmethod
     def from_bytes(
@@ -598,7 +466,7 @@ class SetCartesianImpedanceCommand(BaseCommand):
 
 @dataclass
 class GetRobotModelCommand(BaseCommand):
-    command_type = Command.kGetRobotModel
+    command_type = RobotCommand.kGetRobotModel
 
     @classmethod
     def from_bytes(
@@ -619,7 +487,7 @@ class GetRobotModelCommand(BaseCommand):
 class AutomaticErrorRecoveryCommand(BaseCommand):
     """Represents an AutomaticErrorRecovery command request"""
 
-    command_type = Command.kAutomaticErrorRecovery
+    command_type = RobotCommand.kAutomaticErrorRecovery
 
     @classmethod
     def from_bytes(

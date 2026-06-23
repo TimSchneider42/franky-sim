@@ -4,7 +4,7 @@ import dataclasses
 import struct
 from dataclasses import dataclass
 
-from .franka_protocol import (
+from .franka_robot_protocol import (
     RobotMode,
     StateControllerMode,
     StateMotionGeneratorMode,

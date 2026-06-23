@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Generic, Sequence, TypeVar
 
@@ -13,6 +12,7 @@ from .constants import FRANKA_TORQUE_LIMITS_HIGH, FRANKA_TORQUE_LIMITS_LOW
 from .franka_robot_state import FrankaRobotState
 
 if TYPE_CHECKING:
+    from .gripper_server import FrankaGripperServer
     from .robot_server import RobotServer
 
 
@@ -182,15 +182,6 @@ class TrackedStateComponent(Generic[T]):
         return self.__depends_on
 
 
-class ControlMode(Enum):
-    POSITION = "position"
-    VELOCITY = "velocity"
-    TORQUE = "torque"
-    CARTESIAN_POSITION = "cartesian_position"
-    CARTESIAN_VELOCITY = "cartesian_velocity"
-    IDLE = "idle"
-
-
 FloatTuple7 = tuple[float, float, float, float, float, float, float]
 FloatTuple9 = tuple[float, float, float, float, float, float, float, float, float]
 
@@ -216,11 +207,14 @@ class BaseRobot(ABC):
         robot_parameters: RobotParameters = RobotParameters(),
         kp: FloatTuple7 = (4500.0, 4500.0, 3500.0, 3500.0, 2000.0, 2000.0, 2000.0),
         kv: FloatTuple7 = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0),
+        has_gripper: bool = True,
     ):
         self.__model = pin.buildModelFromUrdf(
             str(Path(__file__).parent / "assets" / "fr3_clean.urdf")
         )
         self.__server = None
+        self.__gripper_server: FrankaGripperServer | None = None
+        self.__has_gripper = has_gripper
         self.__robot_parameters = robot_parameters
 
         # Add End-Effector properties to the model
@@ -662,7 +656,11 @@ class BaseRobot(ABC):
         frame_id = self.__model.getFrameId("tcp")
 
         J = pin.computeFrameJacobian(
-            self.__model, self.__data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
+            self.__model,
+            self.__data,
+            q,
+            frame_id,
+            pin.ReferenceFrame.LOCAL_WORLD_ALIGNED,
         )
 
         damp = 1e-4
@@ -774,6 +772,9 @@ class BaseRobot(ABC):
     def _set_server(self, server: "RobotServer"):
         self.__server = server
 
+    def _set_gripper_server(self, server: "FrankaGripperServer") -> None:
+        self.__gripper_server = server
+
     @property
     def inner_state(self):
         return self._get_state()
@@ -781,6 +782,14 @@ class BaseRobot(ABC):
     @property
     def server(self) -> "RobotServer | None":
         return self.__server
+
+    @property
+    def gripper_server(self) -> "FrankaGripperServer | None":
+        return self.__gripper_server
+
+    @property
+    def has_gripper(self) -> bool:
+        return self.__has_gripper
 
     @property
     def hostname(self):

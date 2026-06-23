@@ -6,7 +6,7 @@ import time
 from typing import Iterable, Optional
 
 from .base_simulator import BaseSimulator
-from .robot_server import RobotServer
+from .franka_robot_server import FrankaRobotServer
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class SimulationServer:
     ):
         self._hostname_candidates = hostname_candidates
         self.sim: BaseSimulator = sim
-        self.robot_servers: list[RobotServer] = []
+        self.robot_servers: list[FrankaRobotServer] = []
         self.running: bool = False
         self.async_thread: Optional[threading.Thread] = None
 
@@ -46,10 +46,11 @@ class SimulationServer:
                 yield h
 
     def init(self) -> None:
-        for i, robot in enumerate(self.sim.robots):
-            rs = RobotServer(robot, self._remaining_hostname_candidates)
+        for robot in self.sim.robots:
+            rs = FrankaRobotServer(robot, self._remaining_hostname_candidates)
             rs.init()
             self.robot_servers.append(rs)
+
         self.sim.start()
 
     def run_once(self, realtime: bool | float = True):
