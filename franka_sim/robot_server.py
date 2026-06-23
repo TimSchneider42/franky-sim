@@ -435,7 +435,7 @@ class RobotServer:
 
     @property
     def library_version(self):
-        return 9
+        return 10
 
     @property
     def current_motion_id(self):
