@@ -21,12 +21,12 @@
   <link name="fr3_link0">
     <visual name="fr3_link0_visual">
       <geometry>
-        <mesh filename="meshes/robots/fr3/visual/link0.dae"/>
+        <mesh filename="meshes/link0_vis.dae"/>
       </geometry>
     </visual>
     <collision name="fr3_link0_collision">
       <geometry>
-        <mesh filename="meshes/robots/fr3/collision/link0.stl"/>
+        <mesh filename="meshes/link0_coll.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -53,12 +53,12 @@
   <link name="fr3_link1">
     <visual name="fr3_link1_visual">
       <geometry>
-        <mesh filename="meshes/robots/fr3/visual/link1.dae"/>
+        <mesh filename="meshes/link1_vis.dae"/>
       </geometry>
     </visual>
     <collision name="fr3_link1_collision">
       <geometry>
-        <mesh filename="meshes/robots/fr3/collision/link1.stl"/>
+        <mesh filename="meshes/link1_coll.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -95,12 +95,12 @@
   <link name="fr3_link2">
     <visual name="fr3_link2_visual">
       <geometry>
-        <mesh filename="meshes/robots/fr3/visual/link2.dae"/>
+        <mesh filename="meshes/link2_vis.dae"/>
       </geometry>
     </visual>
     <collision name="fr3_link2_collision">
       <geometry>
-        <mesh filename="meshes/robots/fr3/collision/link2.stl"/>
+        <mesh filename="meshes/link2_coll.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -137,12 +137,12 @@
   <link name="fr3_link3">
     <visual name="fr3_link3_visual">
       <geometry>
-        <mesh filename="meshes/robots/fr3/visual/link3.dae"/>
+        <mesh filename="meshes/link3_vis.dae"/>
       </geometry>
     </visual>
     <collision name="fr3_link3_collision">
       <geometry>
-        <mesh filename="meshes/robots/fr3/collision/link3.stl"/>
+        <mesh filename="meshes/link3_coll.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -179,12 +179,12 @@
   <link name="fr3_link4">
     <visual name="fr3_link4_visual">
       <geometry>
-        <mesh filename="meshes/robots/fr3/visual/link4.dae"/>
+        <mesh filename="meshes/link4_vis.dae"/>
       </geometry>
     </visual>
     <collision name="fr3_link4_collision">
       <geometry>
-        <mesh filename="meshes/robots/fr3/collision/link4.stl"/>
+        <mesh filename="meshes/link4_coll.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -221,12 +221,12 @@
   <link name="fr3_link5">
     <visual name="fr3_link5_visual">
       <geometry>
-        <mesh filename="meshes/robots/fr3/visual/link5.dae"/>
+        <mesh filename="meshes/link5_vis.dae"/>
       </geometry>
     </visual>
     <collision name="fr3_link5_collision">
       <geometry>
-        <mesh filename="meshes/robots/fr3/collision/link5.stl"/>
+        <mesh filename="meshes/link5_coll.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -263,12 +263,12 @@
   <link name="fr3_link6">
     <visual name="fr3_link6_visual">
       <geometry>
-        <mesh filename="meshes/robots/fr3/visual/link6.dae"/>
+        <mesh filename="meshes/link6_vis.dae"/>
       </geometry>
     </visual>
     <collision name="fr3_link6_collision">
       <geometry>
-        <mesh filename="meshes/robots/fr3/collision/link6.stl"/>
+        <mesh filename="meshes/link6_coll.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -291,12 +291,12 @@
   <link name="fr3_link7">
     <visual name="fr3_link7_visual">
       <geometry>
-        <mesh filename="meshes/robots/fr3/visual/link7.dae"/>
+        <mesh filename="meshes/link7_vis.dae"/>
       </geometry>
     </visual>
     <collision name="fr3_link7_collision">
       <geometry>
-        <mesh filename="meshes/robots/fr3/collision/link7.stl"/>
+        <mesh filename="meshes/link7_coll.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -330,12 +330,12 @@
   <link name="fr3_hand">
     <visual name="fr3_hand_visual">
       <geometry>
-        <mesh filename="meshes/robot_ee/franka_hand_white/visual/hand.dae"/>
+        <mesh filename="meshes/hand_vis.dae"/>
       </geometry>
     </visual>
     <collision name="fr3_hand_collision">
       <geometry>
-        <mesh filename="meshes/robot_ee/franka_hand_white/collision/hand.stl"/>
+        <mesh filename="meshes/hand_coll.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -354,7 +354,7 @@
   <link name="fr3_leftfinger">
     <visual name="fr3_leftfinger_visual">
       <geometry>
-        <mesh filename="meshes/robot_ee/franka_hand_white/visual/finger.dae"/>
+        <mesh filename="meshes/finger_vis.dae"/>
       </geometry>
     </visual>
     <!-- screw mount -->
@@ -395,7 +395,7 @@
     <visual name="fr3_rightfinger_visual">
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/robot_ee/franka_hand_white/visual/finger.dae"/>
+        <mesh filename="meshes/finger_vis.dae"/>
       </geometry>
     </visual>
     <!-- screw mount -->
