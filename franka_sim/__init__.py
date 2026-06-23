@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .base_simulator import BaseRobot, BaseSimulator, ControlMode
+from .base_simulator import BaseRobot, BaseSimulator, ControlMode, RobotParameters
 from .franka_protocol import (
     AutomaticErrorRecoveryStatus,
     Command,
@@ -20,6 +20,7 @@ from .run_server import main as run_server_main  # isort:skip
 __all__ = [
     "AutomaticErrorRecoveryStatus",
     "BaseRobot",
+    "RobotParameters",
     "BaseSimulator",
     "Command",
     "ConnectStatus",

@@ -190,6 +190,20 @@ class ControlMode(Enum):
     IDLE = "idle"
 
 
+FloatTuple7 = tuple[float, float, float, float, float, float, float]
+FloatTuple9 = tuple[float, float, float, float, float, float, float, float, float]
+
+
+@dataclass(frozen=True)
+class RobotParameters:
+    gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
+    ee_mass: float = 0.73
+    ee_com: tuple[float, float, float] = (-0.01, 0.0, 0.03)
+    ee_tcp_xyz: tuple[float, float, float] = (0.0, 0.0, 0.1034)
+    ee_tcp_rpy: tuple[float, float, float] = (0.0, 0.0, -np.pi / 4)
+    ee_inertia: FloatTuple9 = (0.001, 0.0, 0.0, 0.0, 0.0025, 0.0, 0.0, 0.0, 0.0017)
+
+
 class BaseRobot(ABC):
     """
     Abstract base class for a robot, supporting torque control and standard
@@ -198,67 +212,49 @@ class BaseRobot(ABC):
 
     def __init__(
         self,
-        ee_frame_name: str = "fr3_link8",
-        kp: np.ndarray | None = None,
-        kv: np.ndarray | None = None,
-        gravity: tuple[float, float, float] = (0.0, 0.0, -9.81),
-        ee_mass: float = 0.73,
-        ee_com: tuple[float, float, float] = (-0.01, 0.0, 0.03),
-        ee_tcp_xyz: tuple[float, float, float] = (0.0, 0.0, 0.1034),
-        ee_tcp_rpy: tuple[float, float, float] = (0.0, 0.0, -np.pi / 4),
-        ee_inertia: tuple[float, float, float, float, float, float, float, float, float] = (
-            0.001,
-            0.0,
-            0.0,
-            0.0,
-            0.0025,
-            0.0,
-            0.0,
-            0.0,
-            0.0017,
-        ),
+        robot_parameters: RobotParameters = RobotParameters(),
+        kp: FloatTuple7 = (4500.0, 4500.0, 3500.0, 3500.0, 2000.0, 2000.0, 2000.0),
+        kv: FloatTuple7 = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0),
     ):
-        self.ee_frame_name = ee_frame_name
-        self.tcp_frame_name = "tcp"
-        self.model = pin.buildModelFromUrdf(
+        self._model = pin.buildModelFromUrdf(
             str(Path(__file__).parent / "assets" / "fr3_clean.urdf")
         )
         self._server = None
+        self._robot_parameters = robot_parameters
 
         # Add End-Effector properties to the model
-        frame_id = self.model.getFrameId(self.ee_frame_name)
-        frame = self.model.frames[frame_id]
+        frame_id = self._model.getFrameId("fr3_link8")
+        frame = self._model.frames[frame_id]
         joint_id = frame.parentJoint
 
         # 1. Append Inertia
         Y_ee = pin.Inertia(
-            ee_mass, np.array(ee_com), np.array(ee_inertia).reshape((3, 3), order="F")
+            self._robot_parameters.ee_mass,
+            np.array(self._robot_parameters.ee_com),
+            np.array(self._robot_parameters.ee_inertia).reshape((3, 3), order="F"),
         )
-        self.model.inertias[joint_id] += frame.placement.act(Y_ee)
-        self._base_inertia = self.model.inertias[joint_id].copy()
-
-        self.m_ee = ee_mass
-        self.F_x_Cee = tuple(ee_com)
-        self.I_ee = ee_inertia
+        self._model.inertias[joint_id] += frame.placement.act(Y_ee)
+        self._base_inertia = self._model.inertias[joint_id].copy()
 
         # 2. Add TCP Frame
         self._initial_tcp_placement = pin.SE3(
-            pin.rpy.rpyToMatrix(*ee_tcp_rpy), np.array(ee_tcp_xyz)
+            pin.rpy.rpyToMatrix(*self._robot_parameters.ee_tcp_rpy),
+            np.array(self._robot_parameters.ee_tcp_xyz),
         )
         tcp_frame = pin.Frame(
-            self.tcp_frame_name,
+            "tcp",
             joint_id,
             frame_id,
             frame.placement * self._initial_tcp_placement,
             pin.FrameType.OP_FRAME,
         )
-        self.model.addFrame(tcp_frame)
+        self._model.addFrame(tcp_frame)
 
         self._flange_frame_id = frame_id
-        self._tcp_frame_id = self.model.getFrameId(self.tcp_frame_name)
+        self._tcp_frame_id = self._model.getFrameId("tcp")
         self._ee_joint_id = joint_id
 
-        self.NE_T_EE = (
+        self._NE_T_EE = (
             1.0,
             0.0,
             0.0,
@@ -277,13 +273,12 @@ class BaseRobot(ABC):
             1.0,
         )
 
-        self.data = self.model.createData()
+        self._data = self._model.createData()
 
-        self.gravity = np.array(gravity)
-        self.model.gravity.linear = self.gravity
+        self._model.gravity.linear = np.array(self._robot_parameters.gravity)
 
-        self.t = 0.0
-        self.prev_t = self.t
+        self._t = 0.0
+        self._prev_t = self._t
 
         def mk_obs() -> dict[str, FiniteDifferenceTracker]:
             return {"fd": FiniteDifferenceTracker()}
@@ -419,26 +414,18 @@ class BaseRobot(ABC):
         self.F_x_Cload = (0.0, 0.0, 0.0)
         self.I_load = (0.0,) * 9
 
-        # Genesis default control parameters
-        if kp is None:
-            self.kp = np.array([9000.0, 9000.0, 7000.0, 7000.0, 4000.0, 4000.0, 4000.0])
-        else:
-            self.kp = np.array(kp)
-
-        if kv is None:
-            self.kv = np.array([450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0])
-        else:
-            self.kv = np.array(kv)
+        self.kp = np.array(kp)
+        self.kv = np.array(kv)
 
     def kinematics(self, q: np.ndarray) -> pin.SE3:
-        pin.forwardKinematics(self.model, self.data, np.array(q))
-        pin.updateFramePlacements(self.model, self.data)
-        return self.data.oMf[self._tcp_frame_id]
+        pin.forwardKinematics(self._model, self._data, np.array(q))
+        pin.updateFramePlacements(self._model, self._data)
+        return self._data.oMf[self._tcp_frame_id]
 
     def d_kinematics(self, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
         jacobian = pin.computeFrameJacobian(
-            self.model,
-            self.data,
+            self._model,
+            self._data,
             q,
             self._tcp_frame_id,
             pin.ReferenceFrame.LOCAL_WORLD_ALIGNED,
@@ -459,24 +446,26 @@ class BaseRobot(ABC):
         self.F_x_Cload = F_x_Cload
         self.I_load = load_inertia
 
-        frame = self.model.frames[self._flange_frame_id]
+        frame = self._model.frames[self._flange_frame_id]
         Y_load = pin.Inertia(
             load_mass,
             np.array(F_x_Cload),
             np.array(load_inertia).reshape((3, 3), order="F"),
         )
-        self.model.inertias[self._ee_joint_id] = self._base_inertia + frame.placement.act(Y_load)
-        self.data = self.model.createData()
+        self._model.inertias[self._ee_joint_id] = self._base_inertia + frame.placement.act(Y_load)
+        self._data = self._model.createData()
 
     def set_NE_T_EE(self, ne_t_ee: tuple[float, ...]):
-        self.NE_T_EE = ne_t_ee
+        self._NE_T_EE = ne_t_ee
 
-        flange_frame = self.model.frames[self._flange_frame_id]
+        flange_frame = self._model.frames[self._flange_frame_id]
         new_tcp_placement = self._initial_tcp_placement * pin.SE3(
             np.array(ne_t_ee).reshape((4, 4), order="F")
         )
-        self.model.frames[self._tcp_frame_id].placement = flange_frame.placement * new_tcp_placement
-        self.data = self.model.createData()
+        self._model.frames[self._tcp_frame_id].placement = (
+            flange_frame.placement * new_tcp_placement
+        )
+        self._data = self._model.createData()
 
     def set_EE_T_K(self, ee_t_k: tuple[float, ...]):
         import logging
@@ -491,10 +480,10 @@ class BaseRobot(ABC):
     def torque_control(self, torques: Sequence[float], has_new_command: bool = True):
         torques = np.asarray(torques)
         self._tracked_state_components["tau_J_d"].set(
-            self.t, torques, call_observers=has_new_command
+            self._t, torques, call_observers=has_new_command
         )
-        pin.computeGeneralizedGravity(self.model, self.data, np.array(self._get_state().q))
-        gravity_torques = self.data.g
+        pin.computeGeneralizedGravity(self._model, self._data, np.array(self._get_state().q))
+        gravity_torques = self._data.g
         self._torque_control(torques + gravity_torques)
 
     @abstractmethod
@@ -503,7 +492,7 @@ class BaseRobot(ABC):
 
     def joint_position_control(self, target_q: Sequence[float], has_new_command: bool = True):
         target_q = np.asarray(target_q)
-        self._tracked_state_components["q_d"].set(self.t, target_q, call_observers=has_new_command)
+        self._tracked_state_components["q_d"].set(self._t, target_q, call_observers=has_new_command)
         self._joint_position_control(np.asarray(target_q))
 
     def _joint_position_control(self, target_q: np.ndarray):
@@ -511,8 +500,8 @@ class BaseRobot(ABC):
         q = np.array(state.q)
         dq = np.array(state.dq)
 
-        pin.computeAllTerms(self.model, self.data, q, dq)
-        coriolis = self.data.nle - self.data.g
+        pin.computeAllTerms(self._model, self._data, q, dq)
+        coriolis = self._data.nle - self._data.g
 
         tau = self.kp * (target_q - q) - self.kv * dq + coriolis
         self.torque_control(tau)
@@ -520,7 +509,7 @@ class BaseRobot(ABC):
     def joint_velocity_control(self, target_dq: Sequence[float], has_new_command: bool = True):
         target_dq = np.asarray(target_dq)
         self._tracked_state_components["dq_d"].set(
-            self.t, target_dq, call_observers=has_new_command
+            self._t, target_dq, call_observers=has_new_command
         )
         self._joint_velocity_control(target_dq)
 
@@ -528,8 +517,8 @@ class BaseRobot(ABC):
         state = self._get_state()
         q = np.array(state.q)
         dq = np.array(state.dq)
-        pin.computeAllTerms(self.model, self.data, q, dq)
-        coriolis = self.data.nle - self.data.g
+        pin.computeAllTerms(self._model, self._data, q, dq)
+        coriolis = self._data.nle - self._data.g
         tau = self.kv * (target_dq - dq) + coriolis
         self.torque_control(tau)
 
@@ -541,7 +530,7 @@ class BaseRobot(ABC):
         else:
             if has_new_command:
                 self._tracked_state_components["elbow_c"].set(
-                    self.t,
+                    self._t,
                     np.asarray(target_elbow_config),
                     call_observers=has_new_command,
                 )
@@ -562,10 +551,10 @@ class BaseRobot(ABC):
         )
         target_se3 = pin.XYZQUATToSE3(np.asarray(target_pose))
         self._tracked_state_components["O_T_EE_c"].set(
-            self.t, target_se3, call_observers=has_new_command
+            self._t, target_se3, call_observers=has_new_command
         )
 
-        frame_id = self.model.getFrameId(self.tcp_frame_name)
+        frame_id = self._model.getFrameId("tcp")
 
         target_q = np.array(self._get_state().q)
         damp = 1e-4
@@ -576,9 +565,9 @@ class BaseRobot(ABC):
 
         # Simple iterative IK
         for _ in range(5):
-            pin.forwardKinematics(self.model, self.data, target_q)
-            pin.updateFramePlacement(self.model, self.data, frame_id)
-            current_pose = self.data.oMf[frame_id]
+            pin.forwardKinematics(self._model, self._data, target_q)
+            pin.updateFramePlacement(self._model, self._data, frame_id)
+            current_pose = self._data.oMf[frame_id]
 
             # Error in LOCAL frame
             err = pin.log6(current_pose.inverse() * target_se3).vector
@@ -586,7 +575,7 @@ class BaseRobot(ABC):
                 break
 
             J = pin.computeFrameJacobian(
-                self.model, self.data, target_q, frame_id, pin.ReferenceFrame.LOCAL
+                self._model, self._data, target_q, frame_id, pin.ReferenceFrame.LOCAL
             )
 
             # 1. Explicitly compute the damped pseudo-inverse (J_pinv)
@@ -598,7 +587,7 @@ class BaseRobot(ABC):
 
             # 3. Secondary Task: Null-space attractor for elbow flip direction only
             if target_elbow_flip is not None:
-                v_posture = np.zeros(self.model.nv)
+                v_posture = np.zeros(self._model.nv)
 
                 # Attractor pull for joint 3 to enforce elbow flip sign
                 flip_sign = 1 if target_elbow_flip > 0 else -1
@@ -607,12 +596,12 @@ class BaseRobot(ABC):
                 v_posture *= posture_gain
 
                 # Null-space projector: N = I - J_pinv * J
-                N = np.eye(self.model.nv) - J_pinv @ J
+                N = np.eye(self._model.nv) - J_pinv @ J
 
                 v += N @ v_posture
 
             # Integrate the combined velocities
-            target_q = pin.integrate(self.model, target_q, v)
+            target_q = pin.integrate(self._model, target_q, v)
 
             # Hard constraint: pin elbow joint to its commanded position
             if target_elbow_pos is not None:
@@ -637,16 +626,16 @@ class BaseRobot(ABC):
             target_elbow_config, has_new_command
         )
         self._tracked_state_components["O_dP_EE_c"].set(
-            self.t, target_vel, call_observers=has_new_command
+            self._t, target_vel, call_observers=has_new_command
         )
 
-        pin.computeAllTerms(self.model, self.data, q, np.zeros(self.model.nv))
-        pin.updateFramePlacements(self.model, self.data)
+        pin.computeAllTerms(self._model, self._data, q, np.zeros(self._model.nv))
+        pin.updateFramePlacements(self._model, self._data)
 
-        frame_id = self.model.getFrameId(self.tcp_frame_name)
+        frame_id = self._model.getFrameId("tcp")
 
         J = pin.computeFrameJacobian(
-            self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
+            self._model, self._data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
         )
 
         damp = 1e-4
@@ -663,12 +652,12 @@ class BaseRobot(ABC):
             safe_elbow_angle = 1.57  # ~90 degrees
 
             # Null-space attractor for elbow flip direction only
-            dq_posture = np.zeros(self.model.nv)
+            dq_posture = np.zeros(self._model.nv)
             flip_sign = 1 if target_elbow_flip > 0 else -1
             dq_posture[3] = (flip_sign * safe_elbow_angle) - q[3]
             dq_posture *= posture_gain
 
-            N = np.eye(self.model.nv) - J_pinv @ J
+            N = np.eye(self._model.nv) - J_pinv @ J
             target_dq += N @ dq_posture
 
             # Hard proportional position controller for the elbow joint
@@ -682,7 +671,7 @@ class BaseRobot(ABC):
 
     @property
     def state(self) -> FrankaRobotState:
-        t = self.prev_t
+        t = self._prev_t
         inner_state = self._get_state()
 
         q = inner_state.q
@@ -691,10 +680,13 @@ class BaseRobot(ABC):
         elbow = (float(q[2]), 1.0 if q[3] > 0.0 else -1.0)
         elbow_d = (float(q_d[2]), 1.0 if q_d[3] > 0.0 else -1.0)
 
-        m_total = self.m_ee + self.m_load
+        m_total = self._robot_parameters.ee_mass + self.m_load
         F_x_Ctotal = tuple(
             (
-                (self.m_ee * np.array(self.F_x_Cee) + self.m_load * np.array(self.F_x_Cload))
+                (
+                    self._robot_parameters.ee_mass * np.array(self._robot_parameters.ee_com)
+                    + self.m_load * np.array(self.F_x_Cload)
+                )
                 / m_total
             ).tolist()
         )
@@ -714,18 +706,18 @@ class BaseRobot(ABC):
             F_T_EE=tuple(
                 (
                     self._initial_tcp_placement
-                    * pin.SE3(np.array(self.NE_T_EE).reshape((4, 4), order="F"))
+                    * pin.SE3(np.array(self._NE_T_EE).reshape((4, 4), order="F"))
                 )
                 .homogeneous.flatten(order="F")
                 .tolist()
             ),
             EE_T_K=self.EE_T_K,
             F_T_NE=tuple(self._initial_tcp_placement.homogeneous.flatten(order="F").tolist()),
-            NE_T_EE=self.NE_T_EE,
+            NE_T_EE=self._NE_T_EE,
             tau_ext_hat_filtered=inner_state.tau_j,
-            F_x_Cee=self.F_x_Cee,
-            I_ee=self.I_ee,
-            m_ee=self.m_ee,
+            F_x_Cee=self._robot_parameters.ee_com,
+            I_ee=self._robot_parameters.ee_inertia,
+            m_ee=self._robot_parameters.ee_mass,
             F_x_Ctotal=F_x_Ctotal,
             elbow=elbow,
             elbow_d=elbow_d,
@@ -746,11 +738,11 @@ class BaseRobot(ABC):
 
     def _post_step(self):
         inner_state = self._get_state()
-        self._tracked_state_components["tau_J"].set(self.t, np.array(inner_state.tau_j))
+        self._tracked_state_components["tau_J"].set(self._t, np.array(inner_state.tau_j))
         for _, d in self._tracked_state_components.items():
-            d.finalize(self.t, inner_state)
-        self.prev_t = self.t
-        self.t += 0.001
+            d.finalize(self._t, inner_state)
+        self._prev_t = self._t
+        self._t += 0.001
 
     def _set_server(self, server: "RobotServer"):
         self._server = server
@@ -768,6 +760,10 @@ class BaseRobot(ABC):
         if self._server is None:
             return None
         return self._server.hostname
+
+    @property
+    def robot_parameters(self) -> RobotParameters:
+        return self._robot_parameters
 
 
 class BaseSimulator(ABC):

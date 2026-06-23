@@ -8,7 +8,13 @@ import genesis as gs
 import numpy as np
 from genesis.engine.entities import RigidEntity
 
-from .base_simulator import BaseRobot, BaseSimulator, InnerRobotState
+from .base_simulator import (
+    BaseRobot,
+    BaseSimulator,
+    FloatTuple7,
+    InnerRobotState,
+    RobotParameters,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +28,12 @@ class FrankaGenesisRobot(BaseRobot):
         self,
         franka: RigidEntity,
         simulation: GenesisSimulator,
-        gravity: tuple[float, float, float] = (0.0, 0.0, -9.81),
         initial_q: Sequence[float] = DEFAULT_INITIAL_Q,
+        robot_parameters: RobotParameters = RobotParameters(),
+        kp: FloatTuple7 = (9000.0, 9000.0, 7000.0, 7000.0, 4000.0, 4000.0, 4000.0),
+        kv: FloatTuple7 = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0),
     ):
-        super().__init__("fr3_link8", gravity=gravity)
+        super().__init__(robot_parameters=robot_parameters, kp=kp, kv=kv)
         self._entity = franka
         self._dofs_idx = [
             self._entity.get_joint(f"fr3_joint{i}").dofs_idx_local[0] for i in range(1, 8)
@@ -92,12 +100,20 @@ class GenesisSimulator(BaseSimulator):
 
         self._scene.add_entity(gs.morphs.Plane())
 
-    def add_robot(self, initial_q: Sequence[float] = DEFAULT_INITIAL_Q) -> FrankaGenesisRobot:
+    def add_robot(
+        self,
+        initial_q: Sequence[float] = DEFAULT_INITIAL_Q,
+        robot_parameters: RobotParameters = RobotParameters(),
+        kp: FloatTuple7 = (9000.0, 9000.0, 7000.0, 7000.0, 4000.0, 4000.0, 4000.0),
+        kv: FloatTuple7 = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0),
+    ) -> FrankaGenesisRobot:
         entity = self._scene.add_entity(
             gs.morphs.URDF(file=str(Path(__file__).parent / "assets" / "fr3.urdf"), fixed=True),
             material=gs.materials.Rigid(gravity_compensation=0.0),
         )
-        robot = FrankaGenesisRobot(entity, self, gravity=self._gravity, initial_q=initial_q)
+        robot = FrankaGenesisRobot(
+            entity, self, initial_q=initial_q, robot_parameters=robot_parameters, kp=kp, kv=kv
+        )
         entity.latest_joint_positions = np.array(initial_q)
         self._robots += (robot,)
         return robot
