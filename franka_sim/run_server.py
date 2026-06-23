@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Type
 
 import franka_sim
-from franka_sim import BaseSimulator
 
 SIMULATOR_NAMES = [
     e.stem[: -len("simulator") - 1]
