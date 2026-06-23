@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 gs.init()
 
 GENESIS_DEFAULT_KP = (9000.0, 9000.0, 7000.0, 7000.0, 4000.0, 4000.0, 4000.0)
-GENESIS_DEFAULT_KV = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0)
+GENESIS_DEFAULT_KV = (225.0, 225.0, 175.0, 175.0, 100.0, 100.0, 100.0)
 
 
 class FrankaGenesisRobot(BaseRobot):
