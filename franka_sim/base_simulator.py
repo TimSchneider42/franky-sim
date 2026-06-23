@@ -492,6 +492,28 @@ class BaseRobot(ABC):
     def _torque_control(self, torques: np.ndarray):
         pass
 
+    @abstractmethod
+    def set_hand_goal(self, width: float, max_velocity: float, max_force: float) -> None:
+        """
+        Set the desired hand state. Concrete simulators override this to realize the
+        goal however suits their constraint model (PD control, position servo, etc.).
+
+        width:        target total finger separation in metres (range 0.0–0.08 m)
+        max_velocity: velocity limit in m/s the motion should not exceed
+        max_force:    force limit in N that may be applied to each finger
+        """
+        pass
+
+    @abstractmethod
+    def _get_hand_width(self) -> float:
+        """Return the current total finger separation in metres."""
+        pass
+
+    @property
+    def hand_width(self) -> float:
+        """Current total finger separation in metres."""
+        return self._get_hand_width()
+
     def joint_position_control(self, target_q: Sequence[float], has_new_command: bool = True):
         target_q = np.asarray(target_q)
         self._tracked_state_components["q_d"].set(

@@ -23,6 +23,7 @@ gs.init()
 GENESIS_DEFAULT_INITIAL_Q = (0.0, 0.0, 0.0, -1.57, 0.0, 1.57, 0.785)
 GENESIS_DEFAULT_KP = (9000.0, 9000.0, 7000.0, 7000.0, 4000.0, 4000.0, 4000.0)
 GENESIS_DEFAULT_KV = (450.0, 450.0, 350.0, 350.0, 200.0, 200.0, 200.0)
+GENESIS_HAND_DEFAULT_WIDTH = 0.04
 
 
 class FrankaGenesisRobot(BaseRobot):
@@ -31,6 +32,7 @@ class FrankaGenesisRobot(BaseRobot):
         franka: RigidEntity,
         simulation: GenesisSimulator,
         initial_q: Sequence[float] = GENESIS_DEFAULT_INITIAL_Q,
+        initial_hand_width: float = GENESIS_HAND_DEFAULT_WIDTH,
         robot_parameters: RobotParameters = RobotParameters(),
         kp: FloatTuple7 = GENESIS_DEFAULT_KP,
         kv: FloatTuple7 = GENESIS_DEFAULT_KV,
@@ -40,8 +42,19 @@ class FrankaGenesisRobot(BaseRobot):
         self._dofs_idx = [
             self._entity.get_joint(f"fr3_joint{i}").dofs_idx_local[0] for i in range(1, 8)
         ]
+        self._hand_dofs_idx = [
+            self._entity.get_joint("fr3_finger_joint1").dofs_idx_local[0],
+            self._entity.get_joint("fr3_finger_joint2").dofs_idx_local[0],
+        ]
         self._initial_q = tuple(initial_q)
+        self._initial_hand_q = (initial_hand_width / 2, initial_hand_width / 2)
         self._simulation = simulation
+
+        self._kp_hand = np.array([1000.0, 1000.0])
+        self._kv_hand = np.array([50.0, 50.0])
+        self._hand_goal_width = initial_hand_width
+        self._hand_goal_velocity = 0.2
+        self._hand_goal_force = 70.0
 
     def _torque_control(self, torques: np.ndarray) -> None:
         self.latest_torques = np.array(torques)
@@ -60,6 +73,35 @@ class FrankaGenesisRobot(BaseRobot):
             tau_j=tuple(0 for _ in range(len(self.initial_q))),
         )
 
+    def _get_hand_width(self) -> float:
+        if self._simulation.is_started:
+            positions = self._entity.get_dofs_position(self._hand_dofs_idx).cpu().numpy()
+            return float(positions[0] + positions[1])
+        return sum(self._initial_hand_q)
+
+    def _hand_torque_control(self, torques: np.ndarray) -> None:
+        self._entity.control_dofs_force(torques, self._hand_dofs_idx)
+
+    def set_hand_goal(self, width: float, max_velocity: float, max_force: float) -> None:
+        self._hand_goal_width = float(width)
+        self._hand_goal_velocity = float(max_velocity)
+        self._hand_goal_force = float(max_force)
+
+    def _pre_step(self) -> None:
+        if self._simulation.is_started:
+            q = self._entity.get_dofs_position(self._hand_dofs_idx).cpu().numpy()
+            dq = self._entity.get_dofs_velocity(self._hand_dofs_idx).cpu().numpy()
+        else:
+            q = np.array(self._initial_hand_q)
+            dq = np.zeros(2)
+        target_q = np.full(2, self._hand_goal_width / 2)
+        tau = self._kp_hand * (target_q - q) - self._kv_hand * dq
+        for i in range(len(dq)):
+            if abs(dq[i]) > self._hand_goal_velocity and np.sign(dq[i]) == np.sign(tau[i]):
+                tau[i] = -self._kv_hand[i] * dq[i]
+        tau = np.clip(tau, -self._hand_goal_force, self._hand_goal_force)
+        self._hand_torque_control(tau)
+
     @property
     def entity(self):
         return self._entity
@@ -69,8 +111,16 @@ class FrankaGenesisRobot(BaseRobot):
         return self._dofs_idx
 
     @property
+    def hand_dofs_idx(self):
+        return self._hand_dofs_idx
+
+    @property
     def initial_q(self) -> tuple[float, ...]:
         return self._initial_q
+
+    @property
+    def initial_hand_q(self) -> tuple[float, ...]:
+        return self._initial_hand_q
 
 
 class GenesisSimulator(BaseSimulator):
@@ -105,6 +155,7 @@ class GenesisSimulator(BaseSimulator):
     def add_robot(
         self,
         initial_q: Sequence[float] = GENESIS_DEFAULT_INITIAL_Q,
+        initial_hand_width: float = GENESIS_HAND_DEFAULT_WIDTH,
         robot_parameters: RobotParameters = RobotParameters(),
         kp: FloatTuple7 = GENESIS_DEFAULT_KP,
         kv: FloatTuple7 = GENESIS_DEFAULT_KV,
@@ -128,9 +179,15 @@ class GenesisSimulator(BaseSimulator):
                 upper=np.array([87, 87, 87, 87, 12, 12, 12]),
                 dofs_idx_local=r.dofs_idx,
             )
+            r.entity.set_dofs_force_range(
+                lower=np.array([-140.0, -140.0]),
+                upper=np.array([140.0, 140.0]),
+                dofs_idx_local=r.hand_dofs_idx,
+            )
         for _ in range(100):
             for r in self._robots:
                 r.entity.set_dofs_position(r.initial_q, r.dofs_idx)
+                r.entity.set_dofs_position(np.array(r.initial_hand_q), r.hand_dofs_idx)
             self._scene.step()
 
     def _cleanup(self) -> None:
