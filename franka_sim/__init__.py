@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from .base_simulator import BaseRobot, BaseSimulator, ControlMode, RobotParameters
+from .base_simulator import (
+    BaseRobot,
+    BaseSimulator,
+    ControlMode,
+    FloatTuple7,
+    FloatTuple9,
+    RobotParameters,
+)
 from .franka_protocol import (
     AutomaticErrorRecoveryStatus,
     Command,
@@ -21,6 +28,8 @@ __all__ = [
     "AutomaticErrorRecoveryStatus",
     "BaseRobot",
     "RobotParameters",
+    "FloatTuple7",
+    "FloatTuple9",
     "BaseSimulator",
     "Command",
     "ConnectStatus",
