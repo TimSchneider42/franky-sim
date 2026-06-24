@@ -65,6 +65,12 @@ def main() -> None:
         default="auto",
         help="Simulator to use.",
     )
+    parser.add_argument(
+        "--hostname",
+        default=None,
+        help="Force the server to bind to this hostname instead of auto-selecting a loopback "
+        "address.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -82,9 +88,13 @@ def main() -> None:
         "visualization"
     )
 
+    server_kwargs = {}
+    if args.hostname is not None:
+        server_kwargs["hostname_candidates"] = [args.hostname]
+
     with Simulator(enable_visualization=args.render) as sim:
         robot = sim.add_robot()
-        with franky_sim.SimulationServer(sim) as server:
+        with franky_sim.SimulationServer(sim, **server_kwargs) as server:
             print(f"Connect to the server using '{robot.hostname}' as the robot IP address")
             print("Press Ctrl+C to stop the server")
             try:
