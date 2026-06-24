@@ -48,6 +48,9 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
 ]
+examples = [
+    "franky-control>=1.1.4",
+]
 
 [tool.setuptools]
 packages = ["franky_sim"]
