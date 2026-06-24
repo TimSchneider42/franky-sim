@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "franky-sim"
-description = "A high-fidelity simulation server that implements the Franka robot network protocol, enabling seamless switching between simulation and hardware."
-requires-python = ">=3.8"
+description = "Drop-in Franka robot simulator implementing the libfranka network protocol."
+requires-python = ">=3.9"
 dynamic = ["version"]  # Use dynamic versioning from git tags
 dependencies = [
     "numpy",
@@ -17,24 +17,20 @@ authors = [
     {name = "Tim Schneider", email = "tim@robot-learning.de"},
     {name = "Baris Yazici", email = "barisyazici@alumni.sabanciuniv.edu"},
 ]
-license = {text = "Apache-2.0"}
-keywords = ["robotics", "simulation", "franka", "robot", "genesis"]
+license = "Apache-2.0"
+keywords = ["robotics", "franky", "robotics-simulation", "franka", "franka-research3", "genesis", "mujoco"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Physics",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/BarisYazici/libfranka-sim"
-"Bug Tracker" = "https://github.com/BarisYazici/libfranka-sim/issues"
-"Documentation" = "https://github.com/BarisYazici/libfranka-sim#readme"
+"Homepage" = "https://github.com/TimSchneider42/franky-sim"
+"Bug Tracker" = "https://github.com/TimSchneider42/franky-sim/issues"
+"Documentation" = "https://github.com/TimSchneider42/franky-sim#readme"
 
 [project.scripts]
 franky-sim = "franky_sim.run_server:main"
@@ -61,8 +57,7 @@ packages = ["franky_sim"]
 
 [tool.black]
 line-length = 100
-target-version = ['py38']
-include = '\.pyi?$'
+target-version = ["py39"]
 
 [tool.isort]
 profile = "black"
@@ -79,10 +74,6 @@ python_files = ["test_*.py"]
 addopts = "-v --cov=franky_sim --cov-report=term-missing"
 
 [tool.setuptools_scm]
-# This will get the version from the most recent git tag
-# Fallback version when not in a git repository
-fallback_version = "0.1.5"
-# Use standard version scheme
+fallback_version = "0.0.0"
 version_scheme = "guess-next-dev"
-# Use clean tag version when building from a tag
 local_scheme = "no-local-version"
