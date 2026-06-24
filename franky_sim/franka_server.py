@@ -26,6 +26,8 @@ class ConnectStatus(enum.IntEnum):
 
 
 class NonBlockingReceiver:
+    """Accumulates data from a non-blocking socket until a complete message is available."""
+
     def __init__(self, sock: socket.socket):
         self.sock = sock
         self.buffer = bytearray()
@@ -49,6 +51,10 @@ class NonBlockingReceiver:
 
 
 class MessageReceiver:
+    """
+    Reassembles length-prefixed messages from a non-blocking socket into (header, payload) pairs.
+    """
+
     def __init__(
         self,
         sock: socket.socket,
@@ -249,6 +255,8 @@ class ConnectCommand(BaseCommand):
 
 
 class FrankaServer(ABC):
+    """Base class for a non-blocking TCP/UDP server implementing the libfranka wire protocol."""
+
     def __init__(
         self,
         hostname_candidates: Iterable[str],
@@ -282,6 +290,7 @@ class FrankaServer(ABC):
         self.__state_message_id_type_struct = state_message_id_type_struct
 
     def init(self):
+        """Bind the TCP server socket to the first available hostname candidate."""
         if self.__server_socket:
             return
         tested_candidates = []
@@ -310,6 +319,7 @@ class FrankaServer(ABC):
         self.reset_state()
 
     def cleanup(self):
+        """Close the server socket."""
         if self.__server_socket:
             try:
                 self.__server_socket.close()
@@ -318,6 +328,7 @@ class FrankaServer(ABC):
             self.__server_socket = None
 
     def reset_state(self):
+        """Close the current client connection and reset all per-session state."""
         if self.__tcp_socket:
             try:
                 self.__tcp_socket.close()
@@ -405,6 +416,7 @@ class FrankaServer(ABC):
                 break
 
     def send_state(self):
+        """Serialize and send the current state over UDP to the connected client."""
         if not self.udp_connected:
             return
 

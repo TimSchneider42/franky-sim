@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 
 class ControlMode(enum.Enum):
+    """Active motion-generator mode for the current Move session."""
+
     POSITION = "position"
     VELOCITY = "velocity"
     TORQUE = "torque"
@@ -47,12 +49,16 @@ class ControlMode(enum.Enum):
 
 
 class ImpedanceControlMode(enum.IntEnum):
+    """Impedance controller mode reported in the robot state."""
+
     JOINT_IMPEDANCE = 0
     CARTESIAN_IMPEDANCE = 1
     NONE = 2
 
 
 class FrankaRobotServer(FrankaServer):
+    """TCP/UDP server that exposes a single Franka robot on port 1337."""
+
     def __init__(self, robot: BaseRobot, hostname_candidates: Iterable[str]):
         command_class_map = {
             RobotCommand.kMove: MoveCommand,
@@ -95,6 +101,7 @@ class FrankaRobotServer(FrankaServer):
         motion_generator_mode: MoveCommandMotionGeneratorMode,
         motion_id: int,
     ):
+        """Activate the requested control/motion mode and record the motion ID."""
         self.__current_motion_id = motion_id
 
         self.__current_control_command = UDPCommand()
@@ -123,6 +130,7 @@ class FrankaRobotServer(FrankaServer):
                 )
 
     def stop_motion(self):
+        """Transition to IDLE mode and hold the current joint configuration."""
         self.__control_mode = ControlMode.IDLE
         self.__holding_q = tuple(self.__robot.state.q_d)
         self.__current_control_command = UDPCommand()
@@ -225,6 +233,9 @@ class FrankaRobotServer(FrankaServer):
 
     @property
     def robot_state(self) -> FrankaRobotState:
+        """
+        Return the robot state augmented with the current controller and motion generator modes.
+        """
         robot_mode = RobotMode.kMove if self.__current_motion_id > 0 else RobotMode.kIdle
 
         if self.__control_mode == ControlMode.TORQUE:

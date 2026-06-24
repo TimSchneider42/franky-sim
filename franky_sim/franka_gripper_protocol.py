@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class GripperCommand(enum.IntEnum):
+    """Commands supported by the Franka gripper interface protocol."""
+
     kHoming = 1
     kGrasp = 2
     kMove = 3
@@ -24,6 +26,8 @@ class GripperCommand(enum.IntEnum):
 
 
 class GripperCommandStatus(enum.IntEnum):
+    """Status codes returned by gripper commands."""
+
     kSuccess = 0
     kFail = 1
     kUnsuccessful = 2

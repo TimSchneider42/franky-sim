@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class LocalHostnames:
+    """Iterable over all usable 127.x.y.z loopback addresses (excluding .0.0.0 and .255.255.255)."""
+
     def __iter__(self):
         for x in range(256):
             for y in range(256):
@@ -28,6 +30,8 @@ class LocalHostnames:
 
 
 class SimulationServer:
+    """Ties a BaseSimulator to one FrankaRobotServer per robot and runs the control loop."""
+
     def __init__(
         self,
         sim: BaseSimulator,
@@ -46,6 +50,7 @@ class SimulationServer:
                 yield h
 
     def init(self) -> None:
+        """Create and bind a FrankaRobotServer for each robot, then start the simulation."""
         for robot in self.sim.robots:
             rs = FrankaRobotServer(robot, self._remaining_hostname_candidates)
             rs.init()
@@ -54,6 +59,12 @@ class SimulationServer:
         self.sim.start()
 
     def run_once(self, realtime: bool | float = True):
+        """Process commands, step the simulation, and broadcast state for one 1 ms tick.
+
+        Args:
+            realtime: If True or a positive float, sleep to maintain 1 kHz wall-clock rate
+                      (float acts as a speed multiplier; False disables sleeping).
+        """
         start_time = time.time()
 
         for rs in self.robot_servers:
@@ -67,15 +78,18 @@ class SimulationServer:
         time.sleep(max(0.0, 0.001 * float(realtime) - (time.time() - start_time)))
 
     def run_forever(self, realtime: bool | float = True):
+        """Block and run the control loop until stop() is called or KeyboardInterrupt."""
         self.running = True
         while self.running:
             self.run_once(realtime)
 
     def run_async(self, realtime: bool | float = True):
+        """Start the control loop in a background daemon thread."""
         self.async_thread = threading.Thread(target=self.run_forever, args=(realtime,), daemon=True)
         self.async_thread.start()
 
     def cleanup(self) -> None:
+        """Stop the control loop, join the async thread if running, and clean up all servers."""
         self.running = False
         if self.async_thread and self.async_thread.is_alive():
             if self.async_thread is not threading.current_thread():

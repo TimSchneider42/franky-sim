@@ -67,13 +67,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Configure detailed logging for debugging
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.WARNING,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
-    # Configure logging to silence Numba debug output
+    # Suppress verbose Numba output that pollutes the log even at WARNING level.
     logging.getLogger("numba").setLevel(logging.WARNING)
 
     Simulator, display_name = load_simulator(args.simulator)
@@ -83,7 +82,6 @@ def main() -> None:
         "visualization"
     )
 
-    # Create the simulation
     with Simulator(enable_visualization=args.render) as sim:
         robot = sim.add_robot()
         with franky_sim.SimulationServer(sim) as server:

@@ -13,6 +13,8 @@ from .franka_robot_protocol import (
 
 @dataclass(frozen=True)
 class FrankaRobotState:
+    """Binary-compatible snapshot of franka::RobotState, transmitted over UDP every 1 ms."""
+
     q: tuple[float, ...] = (0.0,) * 7
     q_d: tuple[float, ...] = (0.0,) * 7
     dq: tuple[float, ...] = (0.0,) * 7

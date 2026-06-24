@@ -204,6 +204,8 @@ def _build_scene_xml(robot_configs: list[dict]) -> str:
 
 
 class FrankaMujocoRobot(BaseRobot):
+    """Franka FR3 robot driven by MuJoCo physics via torque control on qfrc_applied."""
+
     def __init__(
         self,
         initial_q: Sequence[float] = DEFAULT_INITIAL_JOINT_POS,
@@ -312,6 +314,8 @@ class FrankaMujocoRobot(BaseRobot):
 
 
 class MujocoSimulator(BaseSimulator):
+    """Multi-robot MuJoCo simulator with optional passive viewer."""
+
     def __init__(
         self,
         enable_visualization: bool = False,
@@ -335,6 +339,7 @@ class MujocoSimulator(BaseSimulator):
         kv: FloatTuple7 = MUJOCO_DEFAULT_KV,
         position: tuple[float, float, float] = (0.0, 0.0, 0.0),
     ) -> FrankaMujocoRobot:
+        """Register a robot to be placed at position when the simulation starts."""
         robot = FrankaMujocoRobot(
             initial_q=initial_q,
             initial_hand_width=initial_hand_width,
@@ -379,7 +384,6 @@ class MujocoSimulator(BaseSimulator):
         for i, robot in enumerate(self._robots):
             robot._attach_to_scene(self._model, self._data, f"robot{i}_")
 
-        # Set all robots to their initial configurations (arm + fingers)
         for robot in self._robots:
             for addr, q in zip(robot._qpos_addrs, robot.initial_q):
                 self._data.qpos[addr] = q

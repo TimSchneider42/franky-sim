@@ -188,6 +188,8 @@ FloatTuple9 = tuple[float, float, float, float, float, float, float, float, floa
 
 @dataclass(frozen=True)
 class RobotParameters:
+    """Physical parameters for the robot's end-effector and environment."""
+
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     ee_mass: float = 0.73
     ee_com: tuple[float, float, float] = (-0.01, 0.0, 0.03)
@@ -413,11 +415,13 @@ class BaseRobot(ABC):
         self.kv = np.array(kv)
 
     def kinematics(self, q: np.ndarray) -> pin.SE3:
+        """Return the TCP pose (SE3) for joint configuration q."""
         pin.forwardKinematics(self.__model, self.__data, np.array(q))
         pin.updateFramePlacements(self.__model, self.__data)
         return self.__data.oMf[self.__tcp_frame_id]
 
     def d_kinematics(self, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
+        """Return the TCP spatial velocity (6D) for configuration q and joint velocities dq."""
         jacobian = pin.computeFrameJacobian(
             self.__model,
             self.__data,
@@ -437,6 +441,7 @@ class BaseRobot(ABC):
         F_x_Cload: tuple[float, ...],
         load_inertia: tuple[float, ...],
     ):
+        """Update the payload attached to the flange and rebuild the dynamics model."""
         self.m_load = load_mass
         self.F_x_Cload = F_x_Cload
         self.I_load = load_inertia
@@ -453,6 +458,7 @@ class BaseRobot(ABC):
         self.__data = self.__model.createData()
 
     def set_NE_T_EE(self, ne_t_ee: tuple[float, ...]):
+        """Set the nominal-flange-to-EE transform and update the TCP frame placement."""
         self.__NE_T_EE = ne_t_ee
 
         flange_frame = self.__model.frames[self.__flange_frame_id]
@@ -465,6 +471,7 @@ class BaseRobot(ABC):
         self.__data = self.__model.createData()
 
     def set_EE_T_K(self, ee_t_k: tuple[float, ...]):
+        """Store the EE-to-K transform; ignored for control (K frame not simulated)."""
         import logging
 
         logger = logging.getLogger(__name__)
@@ -475,6 +482,7 @@ class BaseRobot(ABC):
         self.EE_T_K = ee_t_k
 
     def torque_control(self, torques: Sequence[float], has_new_command: bool = True):
+        """Apply joint torques, clipped to hardware limits and compensated for gravity."""
         torques = np.clip(np.asarray(torques), FRANKA_TORQUE_LIMITS_LOW, FRANKA_TORQUE_LIMITS_HIGH)
         self._tracked_state_components["tau_J_d"].set(
             self.__t, torques, call_observers=has_new_command
@@ -510,6 +518,7 @@ class BaseRobot(ABC):
         return self._get_hand_width()
 
     def joint_position_control(self, target_q: Sequence[float], has_new_command: bool = True):
+        """Drive joints to target_q via a PD controller with Coriolis compensation."""
         target_q = np.asarray(target_q)
         self._tracked_state_components["q_d"].set(
             self.__t, target_q, call_observers=has_new_command
@@ -528,6 +537,7 @@ class BaseRobot(ABC):
         self.torque_control(tau)
 
     def joint_velocity_control(self, target_dq: Sequence[float], has_new_command: bool = True):
+        """Drive joints to target_dq via a D controller with Coriolis compensation."""
         target_dq = np.asarray(target_dq)
         self._tracked_state_components["dq_d"].set(
             self.__t, target_dq, call_observers=has_new_command
@@ -563,9 +573,11 @@ class BaseRobot(ABC):
         target_elbow_config: Sequence[float] | None,
         has_new_command: bool = True,
     ):
-        """
-        target_pose is expected to be a 7D array [x, y, z, qx, qy, qz, qw]
-        target_elbow_config is expected to be [target_elbow_pos, target_elbow_flip]
+        """Move the TCP to target_pose using iterative IK resolved to joint position control.
+
+        Args:
+            target_pose: 7D array [x, y, z, qx, qy, qz, qw] in the robot base frame.
+            target_elbow_config: [elbow_position, elbow_flip_sign], or None to leave unconstrained.
         """
         target_elbow_pos, target_elbow_flip = self._process_elbow(
             target_elbow_config, has_new_command
@@ -580,11 +592,9 @@ class BaseRobot(ABC):
         target_q = np.array(self._get_state().q)
         damp = 1e-4
 
-        # Posture task parameters
         posture_gain = 0.5
         safe_elbow_angle = 1.57  # ~90 degrees in radians
 
-        # Simple iterative IK
         for _ in range(5):
             pin.forwardKinematics(self.__model, self.__data, target_q)
             pin.updateFramePlacement(self.__model, self.__data, frame_id)
@@ -599,29 +609,23 @@ class BaseRobot(ABC):
                 self.__model, self.__data, target_q, frame_id, pin.ReferenceFrame.LOCAL
             )
 
-            # 1. Explicitly compute the damped pseudo-inverse (J_pinv)
             # J_pinv = J.T * (J * J.T + damp * I)^-1
             J_pinv = J.T @ np.linalg.inv(J @ J.T + damp * np.eye(6))
 
-            # 2. Primary Task: Velocity required for the end-effector pose
             v = J_pinv @ err
 
-            # 3. Secondary Task: Null-space attractor for elbow flip direction only
+            # Null-space attractor for elbow flip direction only
             if target_elbow_flip is not None:
                 v_posture = np.zeros(self.__model.nv)
 
-                # Attractor pull for joint 3 to enforce elbow flip sign
                 flip_sign = 1 if target_elbow_flip > 0 else -1
                 v_posture[3] = (flip_sign * safe_elbow_angle) - target_q[3]
-
                 v_posture *= posture_gain
 
                 # Null-space projector: N = I - J_pinv * J
                 N = np.eye(self.__model.nv) - J_pinv @ J
-
                 v += N @ v_posture
 
-            # Integrate the combined velocities
             target_q = pin.integrate(self.__model, target_q, v)
 
             # Hard constraint: pin elbow joint to its commanded position
@@ -636,9 +640,11 @@ class BaseRobot(ABC):
         target_elbow_config: Sequence[float] | None,
         has_new_command: bool = True,
     ):
-        """
-        target_vel is expected to be a 6D array [vx, vy, vz, wx, wy, wz]
-        target_elbow_config is expected to be [target_elbow_pos, target_elbow_flip]
+        """Drive the TCP at target_vel using Jacobian pseudo-inverse resolved to joint velocities.
+
+        Args:
+            target_vel: 6D array [vx, vy, vz, wx, wy, wz] in the robot base frame.
+            target_elbow_config: [elbow_position, elbow_flip_sign], or None to leave unconstrained.
         """
         state = self._get_state()
         q = np.array(state.q)
@@ -665,13 +671,12 @@ class BaseRobot(ABC):
 
         damp = 1e-4
 
-        # 1. Explicitly compute the damped pseudo-inverse (J_pinv)
+        # J_pinv = J.T * (J * J.T + damp * I)^-1
         J_pinv = J.T @ np.linalg.inv(J @ J.T + damp * np.eye(6))
 
-        # 2. Primary Task: Joint velocities to achieve the target Cartesian velocity
         target_dq = J_pinv @ target_vel
 
-        # 3. Secondary Task: Elbow constraints
+        # Elbow constraints via null-space projection
         if target_elbow_pos is not None:
             posture_gain = 1.0
             safe_elbow_angle = 1.57  # ~90 degrees
@@ -692,10 +697,14 @@ class BaseRobot(ABC):
 
     @staticmethod
     def to_franka_pose(pose: pin.SE3):
+        """
+        Convert a Pinocchio SE3 to a column-major 16-element flat tuple (libfranka convention).
+        """
         return tuple(pose.homogeneous.flatten(order="F").tolist())
 
     @property
     def state(self) -> FrankaRobotState:
+        """Return a fully-populated FrankaRobotState snapshot at the last completed step."""
         t = self.__prev_t
         inner_state = self._get_state()
 
@@ -777,28 +786,34 @@ class BaseRobot(ABC):
 
     @property
     def inner_state(self):
+        """Raw joint state (q, dq, tau_j) directly from the simulator, without processing."""
         return self._get_state()
 
     @property
     def server(self) -> "RobotServer | None":
+        """The RobotServer driving this robot, or None if not yet attached."""
         return self.__server
 
     @property
     def gripper_server(self) -> "FrankaGripperServer | None":
+        """The gripper server for this robot, or None if no gripper or not yet attached."""
         return self.__gripper_server
 
     @property
     def has_gripper(self) -> bool:
+        """Whether this robot has a gripper."""
         return self.__has_gripper
 
     @property
     def hostname(self):
+        """The hostname this robot's server is bound to, or None if not yet attached."""
         if self.__server is None:
             return None
         return self.__server.hostname
 
     @property
     def robot_parameters(self) -> RobotParameters:
+        """The physical parameters used to construct this robot's dynamics model."""
         return self.__robot_parameters
 
 
@@ -826,7 +841,7 @@ class BaseSimulator(ABC):
         pass
 
     def start(self):
-        """Start or initialize the simulation."""
+        """Build and start the simulation after it has been initialized."""
         if self._is_started:
             raise RuntimeError("Simulation is already started.")
         if not self._is_initialized:
@@ -873,6 +888,7 @@ class BaseSimulator(ABC):
 
     @property
     def robots(self) -> list[BaseRobot]:
+        """The robots registered in this simulation."""
         if not self._is_initialized:
             raise RuntimeError("Cannot fetch robots from an uninitialized simulation.")
         if self._is_cleaned_up:

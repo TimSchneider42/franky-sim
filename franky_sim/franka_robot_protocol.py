@@ -15,7 +15,6 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Standard command port for Franka robot interface
 COMMAND_PORT = 1337
 
 
@@ -179,19 +178,14 @@ class MoveCommand(BaseCommand):
         """Parse Move command from binary data"""
         unpacked = cls.STRUCT.unpack(data[: cls.STRUCT.size])
 
-        # Unpack controller mode and motion generator mode
         controller_mode, motion_generator_mode = unpacked[:2]
-        # Validate controller mode and motion generator mode
         try:
             controller_mode = MoveCommandControllerMode(controller_mode)
             motion_generator_mode = MoveCommandMotionGeneratorMode(motion_generator_mode)
         except ValueError as e:
             raise ValueError(f"Invalid controller mode or motion generator mode: {e}")
 
-        # Unpack maximum path deviation
         path_dev = unpacked[2:5]
-
-        # Unpack maximum goal pose deviation
         goal_dev = unpacked[5:8]
 
         return cls(
@@ -213,7 +207,6 @@ class MoveCommand(BaseCommand):
 
             server.start_motion(self.controller_mode, self.motion_generator_mode, self.command_id)
 
-            # First send motion started response
             logger.info("Sending kMotionStarted response")
             self.reply(MoveStatus.kMotionStarted)
             logger.info(f"Motion started with ID: {server.current_motion_id}")
@@ -238,15 +231,12 @@ class StopMoveCommand(BaseCommand):
         try:
             logger.info("Processing StopMove command")
 
-            # Send success response for StopMove first
             self.reply(0)
 
             server.stop_motion()
-
-            # Send one final state with both modes set to idle
             server.send_state()
 
-            # Send Move response to break the waiting loop in the client
+            # Send Move success response to unblock the client's waiting loop
             if server.current_motion_id:
                 try:
                     header = MessageHeader(RobotCommand.kMove, server.current_motion_id, 4)
@@ -263,8 +253,7 @@ class StopMoveCommand(BaseCommand):
 
         except Exception as e:
             logger.error(f"Error handling StopMove command: {e}")
-            # Send error response
-            self.reply(5)  # Status 5 = Aborted
+            self.reply(MoveStatus.kCommandNotPossibleRejected)
 
 
 @dataclass
@@ -284,7 +273,7 @@ class SetEEToKCommand(BaseCommand):
     def handle(self, server: "RobotServer") -> None:
         logger.info("Handling SetEEToKCommand")
         server.robot.set_EE_T_K(self.EE_T_K)
-        self.reply(0)  # Status 0 = Success
+        self.reply(0)
 
 
 @dataclass
@@ -354,13 +343,11 @@ class SetCollisionBehaviorCommand(BaseCommand):
     ) -> "SetCollisionBehaviorCommand":
         unpacked = cls.STRUCT.unpack(data[: cls.STRUCT.size])
 
-        # Unpack torque thresholds (7 doubles each)
         lower_torque_acc = list(unpacked[0:7])
         upper_torque_acc = list(unpacked[7:14])
         lower_torque_nom = list(unpacked[14:21])
         upper_torque_nom = list(unpacked[21:28])
 
-        # Unpack force thresholds (6 doubles each)
         lower_force_acc = list(unpacked[28:34])
         upper_force_acc = list(unpacked[34:40])
         lower_force_nom = list(unpacked[40:46])
@@ -389,13 +376,11 @@ class SetCollisionBehaviorCommand(BaseCommand):
                 f"Upper torque thresholds acc: {self.upper_torque_thresholds_acceleration}"
             )
 
-            # For now, just acknowledge the command without actually implementing behavior
-            # Send success response (status = 0)
+            # Collision behavior is not simulated; acknowledge to keep the client unblocked.
             self.reply(0)
 
         except Exception as e:
             logger.error(f"Error handling SetCollisionBehavior command: {e}")
-            # Send error response (status = 1)
             self.reply(1)
 
 
@@ -411,8 +396,6 @@ class SetJointImpedanceCommand(BaseCommand):
     def from_bytes(
         cls, data: bytes, command_id: int, client_socket: "socket.socket"
     ) -> "SetJointImpedanceCommand":
-        # Each value is a double (8 bytes)
-        # Total expected size: 7 * 8 = 56 bytes
         K_theta = list(struct.unpack("<7d", data[:56]))
         return cls(command_id, client_socket, K_theta)
 
@@ -421,13 +404,11 @@ class SetJointImpedanceCommand(BaseCommand):
             logger.info("Received SetJointImpedance command with values:")
             logger.debug(f"Joint stiffness values: {self.K_theta}")
 
-            # For now, just acknowledge the command without actually implementing behavior
-            # Send success response (status = 0)
+            # Joint impedance is not simulated; acknowledge to keep the client unblocked.
             self.reply(0)
 
         except Exception as e:
             logger.error(f"Error handling SetJointImpedance command: {e}")
-            # Send error response (status = 1)
             self.reply(1)
 
 
@@ -443,8 +424,6 @@ class SetCartesianImpedanceCommand(BaseCommand):
     def from_bytes(
         cls, data: bytes, command_id: int, client_socket: "socket.socket"
     ) -> "SetCartesianImpedanceCommand":
-        # Each value is a double (8 bytes)
-        # Total expected size: 6 * 8 = 48 bytes
         K_x = list(struct.unpack("<6d", data[:48]))
         return cls(command_id, client_socket, K_x)
 
@@ -453,13 +432,11 @@ class SetCartesianImpedanceCommand(BaseCommand):
             logger.info("Received SetCartesianImpedance command with values:")
             logger.debug(f"Cartesian stiffness values: {self.K_x}")
 
-            # For now, just acknowledge the command without actually implementing behavior
-            # Send success response (status = 0)
+            # Cartesian impedance is not simulated; acknowledge to keep the client unblocked.
             self.reply(0)
 
         except Exception as e:
             logger.error(f"Error handling SetCartesianImpedance command: {e}")
-            # Send error response (status = 1)
             self.reply(1)
 
 
@@ -478,7 +455,6 @@ class GetRobotModelCommand(BaseCommand):
             self.reply(0, payload=FR3_URDF.encode("ascii"))
         except Exception as e:
             logger.error(f"Error handling GetRobotModel command: {e}")
-            # Send error response (status = 1)
             self.reply(1)
 
 
@@ -496,6 +472,5 @@ class AutomaticErrorRecoveryCommand(BaseCommand):
 
     def handle(self, server: "RobotServer"):
         logger.info("Executing Automatic Error Recovery")
-        # In a full simulation we would clear current errors here
-        # For now, simply acknowledge success
+        # Error state is not simulated; always acknowledge success.
         self.reply(AutomaticErrorRecoveryStatus.kSuccess)

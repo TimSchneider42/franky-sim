@@ -33,6 +33,8 @@ GENESIS_DEFAULT_KV = (225.0, 225.0, 175.0, 175.0, 100.0, 100.0, 100.0)
 
 
 class FrankaGenesisRobot(BaseRobot):
+    """Franka FR3 robot driven by a Genesis RigidEntity via torque control."""
+
     def __init__(
         self,
         franka: RigidEntity,
@@ -130,6 +132,8 @@ class FrankaGenesisRobot(BaseRobot):
 
 
 class GenesisSimulator(BaseSimulator):
+    """Single-scene Genesis simulator with optional viewer."""
+
     def __init__(
         self,
         enable_visualization: bool = False,
@@ -166,6 +170,7 @@ class GenesisSimulator(BaseSimulator):
         kp: FloatTuple7 = GENESIS_DEFAULT_KP,
         kv: FloatTuple7 = GENESIS_DEFAULT_KV,
     ) -> FrankaGenesisRobot:
+        """Add a Franka robot to the scene; must be called before start()."""
         entity = self._scene.add_entity(
             gs.morphs.URDF(file=str(Path(__file__).parent / "assets" / "fr3.urdf"), fixed=True),
             material=gs.materials.Rigid(gravity_compensation=0.0),

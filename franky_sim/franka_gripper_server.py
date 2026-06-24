@@ -107,6 +107,7 @@ class FrankaGripperServer(FrankaServer):
         command_id: int,
         tcp_socket: socket.socket,
     ) -> None:
+        """Begin a Move command, sending the response once the gripper settles at width."""
         self._robot.set_hand_goal(width, speed, 70.0)
         self._goal_width = width
         self._start_motion(_MotionState.MOVING, GripperCommand.kMove, command_id, tcp_socket)
@@ -121,6 +122,9 @@ class FrankaGripperServer(FrankaServer):
         command_id: int,
         tcp_socket: socket.socket,
     ) -> None:
+        """
+        Begin a Grasp command; success requires the settled width to be within epsilon of width.
+        """
         self._robot.set_hand_goal(width, speed, force)
         self._goal_width = width
         self._goal_epsilon_inner = epsilon_inner
@@ -128,11 +132,13 @@ class FrankaGripperServer(FrankaServer):
         self._start_motion(_MotionState.GRASPING, GripperCommand.kGrasp, command_id, tcp_socket)
 
     def start_homing(self, command_id: int, tcp_socket: socket.socket) -> None:
+        """Begin homing: open fully to measure max_width, then return to the pre-homing position."""
         self._homing_start_width = self._robot.hand_width
         self._robot.set_hand_goal(FRANKA_HAND_MAX_WIDTH, FRANKA_HAND_VELOCITY_LIMIT, 70.0)
         self._start_motion(_MotionState.HOMING, GripperCommand.kHoming, command_id, tcp_socket)
 
     def stop(self, command_id: int, tcp_socket: socket.socket) -> None:
+        """Immediately stop any in-progress motion and hold the current width."""
         self._robot.set_hand_goal(self._robot.hand_width, 0.05, 70.0)
         self._motion_state = _MotionState.IDLE
         self._settling_steps = 0
