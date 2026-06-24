@@ -93,7 +93,7 @@ class GripperGraspCommand(BaseCommand):
     def from_bytes(
         cls, data: bytes, command_id: int, client_socket: socket.socket
     ) -> "GripperGraspCommand":
-        width, eps_inner, eps_outer, speed, force = cls._STRUCT.unpack_from(data)
+        width, speed, force, eps_inner, eps_outer = cls._STRUCT.unpack_from(data)
         return cls(command_id, client_socket, width, speed, force, eps_inner, eps_outer)
 
     def handle(self, server: "FrankaGripperServer") -> None:
