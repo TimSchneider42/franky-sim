@@ -100,6 +100,13 @@ def _build_scene_xml(robot_configs: list[dict]) -> str:
     if base_option is not None:
         scene.append(copy.deepcopy(base_option))
 
+    # Visual settings: dim the headlight so scene lights are dominant
+    visual = ET.SubElement(scene, "visual")
+    ET.SubElement(
+        visual, "headlight", diffuse="0.2 0.2 0.2", ambient="0.05 0.05 0.05", specular="0 0 0"
+    )
+    ET.SubElement(visual, "quality", shadowsize="4096", offsamples="8")
+
     # Shared: default classes and assets (materials + meshes)
     base_default = base_root.find("default")
     if base_default is not None:
@@ -139,6 +146,43 @@ def _build_scene_xml(robot_configs: list[dict]) -> str:
         type="plane",
         size="10 10 0.1",
         material="ground_checker",
+    )
+
+    # Key light: warm, directional from upper-front-right, casts shadows
+    ET.SubElement(
+        worldbody,
+        "light",
+        name="key_light",
+        pos="2 -1.5 3",
+        dir="-0.5 0.4 -1",
+        directional="true",
+        diffuse="0.60 0.56 0.45",
+        specular="0.2 0.2 0.14",
+        castshadow="true",
+    )
+    # Fill light: neutral from upper-left, no shadows
+    ET.SubElement(
+        worldbody,
+        "light",
+        name="fill_light",
+        pos="-2 1.5 2.5",
+        dir="0.5 -0.4 -1",
+        directional="true",
+        diffuse="0.45 0.45 0.48",
+        specular="0.05 0.05 0.05",
+        castshadow="false",
+    )
+    # Rim light: subtle back-light to separate robot from background
+    ET.SubElement(
+        worldbody,
+        "light",
+        name="rim_light",
+        pos="0 3 2",
+        dir="0 -0.8 -0.6",
+        directional="true",
+        diffuse="0.3 0.3 0.35",
+        specular="0.05 0.05 0.08",
+        castshadow="false",
     )
 
     actuator_e = ET.SubElement(scene, "actuator")
