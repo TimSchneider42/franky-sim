@@ -48,7 +48,7 @@ Connect your libfranka/franky client to the IP printed by the program (`127.0.0.
 from franky_sim import SimulationServer
 from franky_sim.mujoco_simulator import MujocoSimulator
 
-with MujocoSimulator() as sim:
+with MujocoSimulator(enable_visualization=True) as sim:
     robot = sim.add_robot()
     with SimulationServer(sim) as server:
         server.run_async()
@@ -67,7 +67,7 @@ import franky
 from franky_sim import SimulationServer
 from franky_sim.mujoco_simulator import MujocoSimulator
 
-with MujocoSimulator() as sim:
+with MujocoSimulator(enable_visualization=True) as sim:
     robot_model = sim.add_robot()
     with SimulationServer(sim) as server:
         server.run_async()
@@ -87,7 +87,7 @@ import franky
 from franky_sim import SimulationServer
 from franky_sim.mujoco_simulator import MujocoSimulator
 
-with MujocoSimulator() as sim:
+with MujocoSimulator(enable_visualization=True) as sim:
     robot_model = sim.add_robot()
     with SimulationServer(sim) as server:
         server.run_async()
@@ -113,7 +113,7 @@ import franky
 from franky_sim import SimulationServer
 from franky_sim.mujoco_simulator import MujocoSimulator
 
-with MujocoSimulator() as sim:
+with MujocoSimulator(enable_visualization=True) as sim:
     robot_model = sim.add_robot()
     with SimulationServer(sim) as server:
         server.run_async()
@@ -133,7 +133,7 @@ import franky
 from franky_sim import SimulationServer
 from franky_sim.mujoco_simulator import MujocoSimulator
 
-with MujocoSimulator() as sim:
+with MujocoSimulator(enable_visualization=True) as sim:
     robot_model = sim.add_robot()
     with SimulationServer(sim) as server:
         server.run_async()
@@ -160,7 +160,7 @@ import franky
 from franky_sim import SimulationServer
 from franky_sim.mujoco_simulator import MujocoSimulator
 
-with MujocoSimulator() as sim:
+with MujocoSimulator(enable_visualization=True) as sim:
     robot_model = sim.add_robot()
     with SimulationServer(sim) as server:
         server.run_async()
