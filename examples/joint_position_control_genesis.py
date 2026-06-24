@@ -27,5 +27,5 @@ with GenesisSimulator(enable_visualization=True) as sim:
         while True:
             for i, target in enumerate(waypoints):
                 robot.move(franky.JointWaypointMotion([franky.JointWaypoint(target)]))
-                print(f"Waypoint {i + 1}: {list(robot.current_joint_state.position)}")
+                print(f"Waypoint {i + 1}: {robot.current_joint_state.position.tolist()}")
                 time.sleep(1)
