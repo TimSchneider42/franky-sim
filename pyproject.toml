@@ -3,19 +3,19 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2",  "numpy==1.26.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "franka-sim"
+name = "franky-sim"
 description = "A high-fidelity simulation server that implements the Franka robot network protocol, enabling seamless switching between simulation and hardware."
 requires-python = ">=3.8"
 dynamic = ["version"]  # Use dynamic versioning from git tags
 dependencies = [
     "numpy",
     "mujoco",
-    "pytest",
     "pin"
 ]
 readme = "README.md"
 authors = [
-    {name = "Baris Yazici", email = "barisyazici@alumni.sabanciuniv.edu"}
+    {name = "Tim Schneider", email = "tim@robot-learning.de"},
+    {name = "Baris Yazici", email = "barisyazici@alumni.sabanciuniv.edu"},
 ]
 license = {text = "Apache-2.0"}
 keywords = ["robotics", "simulation", "franka", "robot", "genesis"]
@@ -37,7 +37,7 @@ classifiers = [
 "Documentation" = "https://github.com/BarisYazici/libfranka-sim#readme"
 
 [project.scripts]
-run-server = "franka_sim.run_server:main"
+franky-sim = "franky_sim.run_server:main"
 
 [project.optional-dependencies]
 genesis = [
@@ -51,14 +51,13 @@ dev = [
     "flake8-docstrings>=1.7.0",
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
-
 ]
 
 [tool.setuptools]
-packages = ["franka_sim"]
+packages = ["franky_sim"]
 
 [tool.setuptools.package-data]
-"franka_sim" = ["assets/*.urdf", "assets/meshes/**/*", "assets/NOTICE"]
+"franky_sim" = ["assets/*.urdf", "assets/meshes/**/*", "assets/NOTICE"]
 
 [tool.black]
 line-length = 100
@@ -77,7 +76,7 @@ ensure_newline_before_comments = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=franka_sim --cov-report=term-missing"
+addopts = "-v --cov=franky_sim --cov-report=term-missing"
 
 [tool.setuptools_scm]
 # This will get the version from the most recent git tag

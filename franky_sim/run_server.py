@@ -6,18 +6,18 @@ import logging
 from pathlib import Path
 from typing import Type
 
-import franka_sim
+import franky_sim
 
 SIMULATOR_NAMES = [
     e.stem[: -len("simulator") - 1]
-    for e in Path(franka_sim.__file__).parent.iterdir()
+    for e in Path(franky_sim.__file__).parent.iterdir()
     if e.stem.endswith("_simulator") and e.stem != "base_simulator"
 ]
 
 
 def load_simulator(
     simulator_name: str, force_success: bool = True
-) -> tuple[Type[franka_sim.BaseSimulator], str] | None:
+) -> tuple[Type[franky_sim.BaseSimulator], str] | None:
     if simulator_name == "auto":
         for name in SIMULATOR_NAMES:
             simulator = load_simulator(name)
@@ -26,7 +26,7 @@ def load_simulator(
         return None
     try:
         module_name = f"{simulator_name}_simulator"
-        module = getattr(__import__(f"franka_sim.{module_name}"), module_name)
+        module = getattr(__import__(f"franky_sim.{module_name}"), module_name)
         simulator = getattr(
             module,
             [e for e in dir(module) if e.lower() == simulator_name + "simulator"][0],
@@ -86,7 +86,7 @@ def main() -> None:
     # Create the simulation
     with Simulator(enable_visualization=args.render) as sim:
         robot = sim.add_robot()
-        with franka_sim.SimulationServer(sim) as server:
+        with franky_sim.SimulationServer(sim) as server:
             print(f"Connect to the server using '{robot.hostname}' as the robot IP address")
             print("Press Ctrl+C to stop the server")
             try:

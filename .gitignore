@@ -1,4 +1,4 @@
-franka_sim.egg-info/
+franky_sim.egg-info/
 __pycache__/
 .pytest_cache/
 .coverage

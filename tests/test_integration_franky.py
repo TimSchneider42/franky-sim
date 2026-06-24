@@ -16,8 +16,8 @@ import franky
 import numpy as np
 import pytest
 
-from franka_sim import SimulationServer
-from franka_sim.mujoco_simulator import MujocoSimulator
+from franky_sim import SimulationServer
+from franky_sim.mujoco_simulator import MujocoSimulator
 
 # Tolerances
 JOINT_ATOL = 0.03  # rad – how close the joint must be to the target
