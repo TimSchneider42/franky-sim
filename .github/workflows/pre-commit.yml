@@ -3,6 +3,7 @@ name: Pre-commit
 on:
   push:
   pull_request:
+  workflow_call:
 
 jobs:
   pre-commit:

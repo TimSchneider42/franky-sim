@@ -6,20 +6,27 @@ on:
       - 'v*'
 
 jobs:
+  pre-commit:
+    uses: ./.github/workflows/pre-commit.yml
+
+  test:
+    uses: ./.github/workflows/test.yml
+
   publish:
     name: Build and publish to PyPI
+    needs: [pre-commit, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # to create the GitHub Release
       id-token: write   # for OIDC trusted publishing to PyPI
 
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
@@ -32,9 +39,9 @@ jobs:
         SETUPTOOLS_SCM_PRETEND_VERSION: ${{ github.ref_name }}
 
     - name: Create GitHub Release
-      uses: softprops/tool.setuptools_scm@v3
+      uses: softprops/action-gh-release@v2
       with:
         files: dist/*
 
     - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@v1
+      uses: pypa/gh-action-pypi-publish@release/v1
