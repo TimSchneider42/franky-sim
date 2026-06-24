@@ -77,176 +77,6 @@ def _prefix_names(elem: ET.Element, prefix: str) -> None:
         _prefix_names(child, prefix)
 
 
-def _build_scene_xml(robot_configs: list[dict]) -> str:
-    """Build a single MJCF XML string containing all robots in one scene.
-
-    Each robot is placed inside a massless wrapper body positioned at its
-    configured offset.  All per-robot named elements (bodies, joints, geoms,
-    actuators, tendons, equality constraints, contacts) are prefixed with
-    ``robot{i}_`` to avoid name collisions.  The assets section (meshes,
-    materials) and the default classes are shared and emitted only once.
-
-    The compiler's ``meshdir`` is set to the absolute meshes directory so that
-    ``MjModel.from_xml_string`` can locate mesh files without an assets dict.
-    """
-    base_root = ET.parse(_XML_PATH).getroot()
-
-    scene = ET.Element("mujoco", model="multi_fr3_scene")
-
-    # Absolute meshdir so mesh files resolve correctly from an XML string
-    ET.SubElement(scene, "compiler", angle="radian", meshdir=str(_MESHES_DIR))
-
-    base_option = base_root.find("option")
-    if base_option is not None:
-        scene.append(copy.deepcopy(base_option))
-
-    # Visual settings: dim the headlight so scene lights are dominant
-    visual = ET.SubElement(scene, "visual")
-    ET.SubElement(
-        visual, "headlight", diffuse="0.2 0.2 0.2", ambient="0.05 0.05 0.05", specular="0 0 0"
-    )
-    ET.SubElement(visual, "quality", shadowsize="4096", offsamples="8")
-
-    # Shared: default classes and assets (materials + meshes)
-    base_default = base_root.find("default")
-    if base_default is not None:
-        scene.append(copy.deepcopy(base_default))
-
-    base_asset = base_root.find("asset")
-    asset = copy.deepcopy(base_asset) if base_asset is not None else ET.SubElement(scene, "asset")
-    # Procedural checkerboard texture — no external file needed
-    ET.SubElement(
-        asset,
-        "texture",
-        name="ground_checker",
-        type="2d",
-        builtin="checker",
-        rgb1="0.15 0.25 0.35",
-        rgb2="0.4 0.55 0.7",
-        width="512",
-        height="512",
-    )
-    ET.SubElement(
-        asset,
-        "material",
-        name="ground_checker",
-        texture="ground_checker",
-        texrepeat="5 5",
-        texuniform="true",
-    )
-    scene.append(asset)
-
-    worldbody = ET.SubElement(scene, "worldbody")
-
-    # Ground plane shared by all robots
-    ET.SubElement(
-        worldbody,
-        "geom",
-        name="ground",
-        type="plane",
-        size="10 10 0.1",
-        material="ground_checker",
-    )
-
-    # Key light: warm, directional from upper-front-right, casts shadows
-    ET.SubElement(
-        worldbody,
-        "light",
-        name="key_light",
-        pos="2 -1.5 3",
-        dir="-0.5 0.4 -1",
-        directional="true",
-        diffuse="0.60 0.56 0.45",
-        specular="0.2 0.2 0.14",
-        castshadow="true",
-    )
-    # Fill light: neutral from upper-left, no shadows
-    ET.SubElement(
-        worldbody,
-        "light",
-        name="fill_light",
-        pos="-2 1.5 2.5",
-        dir="0.5 -0.4 -1",
-        directional="true",
-        diffuse="0.45 0.45 0.48",
-        specular="0.05 0.05 0.05",
-        castshadow="false",
-    )
-    # Rim light: subtle back-light to separate robot from background
-    ET.SubElement(
-        worldbody,
-        "light",
-        name="rim_light",
-        pos="0 3 2",
-        dir="0 -0.8 -0.6",
-        directional="true",
-        diffuse="0.3 0.3 0.35",
-        specular="0.05 0.05 0.08",
-        castshadow="false",
-    )
-
-    actuator_e = ET.SubElement(scene, "actuator")
-    tendon_e = ET.SubElement(scene, "tendon")
-    equality_e = ET.SubElement(scene, "equality")
-    contact_e = ET.SubElement(scene, "contact")
-
-    base_wb = base_root.find("worldbody")
-    base_actuator = base_root.find("actuator")
-    base_tendon = base_root.find("tendon")
-    base_equality = base_root.find("equality")
-    base_contact = base_root.find("contact")
-
-    for i, cfg in enumerate(robot_configs):
-        prefix = f"robot{i}_"
-        pos = cfg.get("position", (0.0, 0.0, 0.0))
-
-        # Clone and prefix the entire robot body tree, then offset it
-        robot_body = copy.deepcopy(base_wb[0])
-        _prefix_names(robot_body, prefix)
-        robot_body.set("pos", f"{pos[0]} {pos[1]} {pos[2]}")
-        worldbody.append(robot_body)
-
-        # Actuators: prefix name, joint, and tendon references
-        if base_actuator is not None:
-            for act in base_actuator:
-                a = copy.deepcopy(act)
-                for attr in ("name", "joint", "tendon"):
-                    if attr in a.attrib:
-                        a.attrib[attr] = prefix + a.attrib[attr]
-                actuator_e.append(a)
-
-        # Tendons: prefix tendon name and the joints it spans
-        if base_tendon is not None:
-            for t in base_tendon:
-                nt = copy.deepcopy(t)
-                if "name" in nt.attrib:
-                    nt.attrib["name"] = prefix + nt.attrib["name"]
-                for c in nt:
-                    if "joint" in c.attrib:
-                        c.attrib["joint"] = prefix + c.attrib["joint"]
-                tendon_e.append(nt)
-
-        # Equality constraints: prefix joint/body references
-        if base_equality is not None:
-            for eq in base_equality:
-                ne = copy.deepcopy(eq)
-                for attr in ("joint1", "joint2", "body1", "body2"):
-                    if attr in ne.attrib:
-                        ne.attrib[attr] = prefix + ne.attrib[attr]
-                equality_e.append(ne)
-
-        # Contact exclusions: prefix body references
-        if base_contact is not None:
-            for c in base_contact:
-                nc = copy.deepcopy(c)
-                for attr in ("body1", "body2"):
-                    if attr in nc.attrib:
-                        nc.attrib[attr] = prefix + nc.attrib[attr]
-                contact_e.append(nc)
-
-    return ET.tostring(scene, encoding="unicode")
-
-
 class FrankaMujocoRobot(BaseRobot):
     """Franka FR3 robot driven by MuJoCo physics via torque control on qfrc_applied."""
 
@@ -358,7 +188,22 @@ class FrankaMujocoRobot(BaseRobot):
 
 
 class MujocoSimulator(BaseSimulator):
-    """Multi-robot MuJoCo simulator with optional passive viewer."""
+    """Multi-robot MuJoCo simulator with optional passive viewer.
+
+    The MJCF scene is built incrementally: static elements (ground plane, lights,
+    shared assets) are added in ``__init__``, and each ``add_robot`` call appends
+    the corresponding bodies and actuators immediately.  Additional scene objects
+    (boxes, tables, sensors, …) can be inserted at any time before the server is
+    started by manipulating ``sim.worldbody`` or ``sim.scene`` directly::
+
+        import xml.etree.ElementTree as ET
+        cube = ET.SubElement(sim.worldbody, "body", name="cube", pos="0.5 0 0.025")
+        ET.SubElement(cube, "freejoint", name="cube_joint")
+        ET.SubElement(cube, "geom", type="box", size="0.025 0.025 0.025")
+
+    After start, ``sim.model`` and ``sim.data`` provide direct access to the
+    MuJoCo model and data objects for reading body positions, contact forces, etc.
+    """
 
     def __init__(
         self,
@@ -369,10 +214,114 @@ class MujocoSimulator(BaseSimulator):
         self._enable_visualization = enable_visualization
         self._gravity = gravity
         self._robots: list[FrankaMujocoRobot] = []
-        self._robot_configs: list[dict] = []
-        self._model: mujoco.MjModel | None = None
-        self._data: mujoco.MjData | None = None
+        self._mj_model: mujoco.MjModel | None = None
+        self._mj_data: mujoco.MjData | None = None
         self._viewer = None
+
+        # Parse the robot template once; store the sections needed by add_robot.
+        base_root = ET.parse(_XML_PATH).getroot()
+        self._tpl_worldbody = base_root.find("worldbody")
+        self._tpl_actuator = base_root.find("actuator")
+        self._tpl_tendon = base_root.find("tendon")
+        self._tpl_equality = base_root.find("equality")
+        self._tpl_contact = base_root.find("contact")
+
+        # Build the scene tree. Users may extend it before start().
+        self._scene = ET.Element("mujoco", model="multi_fr3_scene")
+        ET.SubElement(self._scene, "compiler", angle="radian", meshdir=str(_MESHES_DIR))
+
+        base_option = base_root.find("option")
+        if base_option is not None:
+            self._scene.append(copy.deepcopy(base_option))
+
+        visual = ET.SubElement(self._scene, "visual")
+        ET.SubElement(
+            visual, "headlight", diffuse="0.2 0.2 0.2", ambient="0.05 0.05 0.05", specular="0 0 0"
+        )
+        ET.SubElement(visual, "quality", shadowsize="4096", offsamples="8")
+
+        base_default = base_root.find("default")
+        if base_default is not None:
+            self._scene.append(copy.deepcopy(base_default))
+
+        base_asset = base_root.find("asset")
+        asset = (
+            copy.deepcopy(base_asset)
+            if base_asset is not None
+            else ET.SubElement(self._scene, "asset")
+        )
+        ET.SubElement(
+            asset,
+            "texture",
+            name="ground_checker",
+            type="2d",
+            builtin="checker",
+            rgb1="0.15 0.25 0.35",
+            rgb2="0.4 0.55 0.7",
+            width="512",
+            height="512",
+        )
+        ET.SubElement(
+            asset,
+            "material",
+            name="ground_checker",
+            texture="ground_checker",
+            texrepeat="5 5",
+            texuniform="true",
+        )
+        self._scene.append(asset)
+
+        self._worldbody = ET.SubElement(self._scene, "worldbody")
+        ET.SubElement(
+            self._worldbody,
+            "geom",
+            name="ground",
+            type="plane",
+            size="10 10 0.1",
+            material="ground_checker",
+        )
+        ET.SubElement(
+            self._worldbody,
+            "light",
+            name="key_light",
+            pos="2 -1.5 3",
+            dir="-0.5 0.4 -1",
+            directional="true",
+            diffuse="0.60 0.56 0.45",
+            specular="0.2 0.2 0.14",
+            castshadow="true",
+        )
+        ET.SubElement(
+            self._worldbody,
+            "light",
+            name="fill_light",
+            pos="-2 1.5 2.5",
+            dir="0.5 -0.4 -1",
+            directional="true",
+            diffuse="0.45 0.45 0.48",
+            specular="0.05 0.05 0.05",
+            castshadow="false",
+        )
+        ET.SubElement(
+            self._worldbody,
+            "light",
+            name="rim_light",
+            pos="0 3 2",
+            dir="0 -0.8 -0.6",
+            directional="true",
+            diffuse="0.3 0.3 0.35",
+            specular="0.05 0.05 0.08",
+            castshadow="false",
+        )
+
+        self._actuator_e = ET.SubElement(self._scene, "actuator")
+        self._tendon_e = ET.SubElement(self._scene, "tendon")
+        self._equality_e = ET.SubElement(self._scene, "equality")
+        self._contact_e = ET.SubElement(self._scene, "contact")
+
+    # ------------------------------------------------------------------
+    # Public scene-building API
+    # ------------------------------------------------------------------
 
     def add_robot(
         self,
@@ -383,7 +332,7 @@ class MujocoSimulator(BaseSimulator):
         kv: FloatTuple7 = MUJOCO_DEFAULT_KV,
         position: tuple[float, float, float] = (0.0, 0.0, 0.0),
     ) -> FrankaMujocoRobot:
-        """Register a robot to be placed at position when the simulation starts."""
+        """Register a robot and immediately append its XML elements to the scene tree."""
         robot = FrankaMujocoRobot(
             initial_q=initial_q,
             initial_hand_width=initial_hand_width,
@@ -391,15 +340,89 @@ class MujocoSimulator(BaseSimulator):
             kp=kp,
             kv=kv,
         )
+        i = len(self._robots)
         self._robots.append(robot)
-        self._robot_configs.append({"position": position})
+        prefix = f"robot{i}_"
+
+        # Robot body
+        robot_body = copy.deepcopy(self._tpl_worldbody[0])
+        _prefix_names(robot_body, prefix)
+        robot_body.set("pos", f"{position[0]} {position[1]} {position[2]}")
+        self._worldbody.append(robot_body)
+
+        # Actuators
+        if self._tpl_actuator is not None:
+            for act in self._tpl_actuator:
+                a = copy.deepcopy(act)
+                for attr in ("name", "joint", "tendon"):
+                    if attr in a.attrib:
+                        a.attrib[attr] = prefix + a.attrib[attr]
+                self._actuator_e.append(a)
+
+        # Tendons
+        if self._tpl_tendon is not None:
+            for t in self._tpl_tendon:
+                nt = copy.deepcopy(t)
+                if "name" in nt.attrib:
+                    nt.attrib["name"] = prefix + nt.attrib["name"]
+                for c in nt:
+                    if "joint" in c.attrib:
+                        c.attrib["joint"] = prefix + c.attrib["joint"]
+                self._tendon_e.append(nt)
+
+        # Equality constraints
+        if self._tpl_equality is not None:
+            for eq in self._tpl_equality:
+                ne = copy.deepcopy(eq)
+                for attr in ("joint1", "joint2", "body1", "body2"):
+                    if attr in ne.attrib:
+                        ne.attrib[attr] = prefix + ne.attrib[attr]
+                self._equality_e.append(ne)
+
+        # Contact exclusions
+        if self._tpl_contact is not None:
+            for c in self._tpl_contact:
+                nc = copy.deepcopy(c)
+                for attr in ("body1", "body2"):
+                    if attr in nc.attrib:
+                        nc.attrib[attr] = prefix + nc.attrib[attr]
+                self._contact_e.append(nc)
+
         return robot
 
+    # ------------------------------------------------------------------
+    # Properties for scene access
+    # ------------------------------------------------------------------
+
+    @property
+    def scene(self) -> ET.Element:
+        """Root MJCF element. Modify before start() to customise the scene."""
+        return self._scene
+
+    @property
+    def worldbody(self) -> ET.Element:
+        """Worldbody element. Append bodies, geoms, and lights here."""
+        return self._worldbody
+
+    @property
+    def model(self) -> mujoco.MjModel | None:
+        """Returns MjModel after start(), or None before."""
+        return self._mj_model
+
+    @property
+    def data(self) -> mujoco.MjData | None:
+        """Returns MjData after start(), or None before."""
+        return self._mj_data
+
+    # ------------------------------------------------------------------
+    # BaseSimulator lifecycle
+    # ------------------------------------------------------------------
+
     def _start(self) -> None:
-        xml_string = _build_scene_xml(self._robot_configs)
-        self._model = mujoco.MjModel.from_xml_string(xml_string)
-        self._model.opt.gravity[:] = list(self._gravity)
-        self._model.opt.timestep = 0.001
+        xml_string = ET.tostring(self._scene, encoding="unicode")
+        self._mj_model = mujoco.MjModel.from_xml_string(xml_string)
+        self._mj_model.opt.gravity[:] = list(self._gravity)
+        self._mj_model.opt.timestep = 0.001
 
         # The XML defines actuators for arm joints and the hand tendon, but we drive
         # everything via qfrc_applied.  Zero out all gains so the actuators produce
@@ -408,64 +431,64 @@ class MujocoSimulator(BaseSimulator):
             prefix = f"robot{i}_"
             for j in range(1, 8):
                 act_id = mujoco.mj_name2id(
-                    self._model,
+                    self._mj_model,
                     mujoco.mjtObj.mjOBJ_ACTUATOR,
                     f"{prefix}fr3_joint{j}",
                 )
                 if act_id >= 0:
-                    self._model.actuator_gainprm[act_id, :] = 0.0
-                    self._model.actuator_biasprm[act_id, :] = 0.0
+                    self._mj_model.actuator_gainprm[act_id, :] = 0.0
+                    self._mj_model.actuator_biasprm[act_id, :] = 0.0
             hand_act_id = mujoco.mj_name2id(
-                self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{prefix}hand"
+                self._mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{prefix}hand"
             )
             if hand_act_id >= 0:
-                self._model.actuator_gainprm[hand_act_id, :] = 0.0
-                self._model.actuator_biasprm[hand_act_id, :] = 0.0
+                self._mj_model.actuator_gainprm[hand_act_id, :] = 0.0
+                self._mj_model.actuator_biasprm[hand_act_id, :] = 0.0
 
-        self._data = mujoco.MjData(self._model)
+        self._mj_data = mujoco.MjData(self._mj_model)
 
         # Wire each robot up to its slice of the shared model/data
         for i, robot in enumerate(self._robots):
-            robot._attach_to_scene(self._model, self._data, f"robot{i}_")
+            robot._attach_to_scene(self._mj_model, self._mj_data, f"robot{i}_")
 
         for robot in self._robots:
             for addr, q in zip(robot._qpos_addrs, robot.initial_q):
-                self._data.qpos[addr] = q
+                self._mj_data.qpos[addr] = q
             half = robot._initial_hand_width / 2.0
             for addr in robot._finger_qpos_addrs:
-                self._data.qpos[addr] = half
-        self._data.qvel[:] = 0.0
-        self._data.qfrc_applied[:] = 0.0
-        mujoco.mj_forward(self._model, self._data)
+                self._mj_data.qpos[addr] = half
+        self._mj_data.qvel[:] = 0.0
+        self._mj_data.qfrc_applied[:] = 0.0
+        mujoco.mj_forward(self._mj_model, self._mj_data)
 
         # Warm-up: PD-hold all robots at their initial configs for 100 steps
         kp, kv = 1000.0, 100.0
         for _ in range(100):
             for robot in self._robots:
-                q_now = np.array([self._data.qpos[a] for a in robot._qpos_addrs])
-                dq_now = np.array([self._data.qvel[a] for a in robot._dof_addrs])
+                q_now = np.array([self._mj_data.qpos[a] for a in robot._qpos_addrs])
+                dq_now = np.array([self._mj_data.qvel[a] for a in robot._dof_addrs])
                 tau = kp * (np.array(robot.initial_q) - q_now) - kv * dq_now
                 tau = np.clip(tau, robot.torque_limit_low, robot.torque_limit_high)
                 for idx, dof_addr in enumerate(robot._dof_addrs):
-                    self._data.qfrc_applied[dof_addr] = tau[idx]
+                    self._mj_data.qfrc_applied[dof_addr] = tau[idx]
                 robot._pre_step()
-            mujoco.mj_step(self._model, self._data)
+            mujoco.mj_step(self._mj_model, self._mj_data)
 
         # Return all robots to a clean initial state after warmup
         for robot in self._robots:
             for addr, q in zip(robot._qpos_addrs, robot.initial_q):
-                self._data.qpos[addr] = q
+                self._mj_data.qpos[addr] = q
             half = robot._initial_hand_width / 2.0
             for addr in robot._finger_qpos_addrs:
-                self._data.qpos[addr] = half
-        self._data.qvel[:] = 0.0
-        self._data.qfrc_applied[:] = 0.0
-        mujoco.mj_forward(self._model, self._data)
+                self._mj_data.qpos[addr] = half
+        self._mj_data.qvel[:] = 0.0
+        self._mj_data.qfrc_applied[:] = 0.0
+        mujoco.mj_forward(self._mj_model, self._mj_data)
 
-        if self._enable_visualization and self._model is not None:
+        if self._enable_visualization and self._mj_model is not None:
             import mujoco.viewer as mjv
 
-            self._viewer = mjv.launch_passive(self._model, self._data)
+            self._viewer = mjv.launch_passive(self._mj_model, self._mj_data)
 
     def _cleanup(self) -> None:
         if self._viewer is not None:
@@ -475,15 +498,13 @@ class MujocoSimulator(BaseSimulator):
                 pass
             self._viewer = None
         self._robots = []
-        self._robot_configs = []
-        self._model = None
-        self._data = None
+        self._mj_model = None
+        self._mj_data = None
 
     def _get_robots(self) -> list[BaseRobot]:
         return list(self._robots)
 
     def _step(self) -> None:
-        # One call steps the entire shared scene
-        mujoco.mj_step(self._model, self._data)
+        mujoco.mj_step(self._mj_model, self._mj_data)
         if self._viewer is not None:
             self._viewer.sync()
