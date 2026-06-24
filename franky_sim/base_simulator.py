@@ -12,8 +12,10 @@ from .constants import FRANKA_TORQUE_LIMITS_HIGH, FRANKA_TORQUE_LIMITS_LOW
 from .franka_robot_state import FrankaRobotState
 
 if TYPE_CHECKING:
-    from .gripper_server import FrankaGripperServer
-    from .robot_server import RobotServer
+    from typing import Self
+
+    from .franka_gripper_server import FrankaGripperServer
+    from .franka_robot_server import FrankaRobotServer
 
 
 @dataclass(frozen=True)
@@ -778,7 +780,7 @@ class BaseRobot(ABC):
         self.__prev_t = self.__t
         self.__t += 0.001
 
-    def _set_server(self, server: "RobotServer"):
+    def _set_server(self, server: "FrankaRobotServer"):
         self.__server = server
 
     def _set_gripper_server(self, server: "FrankaGripperServer") -> None:
@@ -790,7 +792,7 @@ class BaseRobot(ABC):
         return self._get_state()
 
     @property
-    def server(self) -> "RobotServer | None":
+    def server(self) -> "FrankaRobotServer | None":
         """The RobotServer driving this robot, or None if not yet attached."""
         return self.__server
 
@@ -824,59 +826,65 @@ class BaseSimulator(ABC):
     """
 
     def __init__(self):
-        self._is_initialized = False
-        self._is_started = False
-        self._is_cleaned_up = False
+        self.__is_initialized = False
+        self.__is_started = False
+        self.__is_cleaned_up = False
+        self.__pre_step_callbacks: list[Callable[[Self], None]] = []
+        self.__post_step_callbacks: list[Callable[[Self], None]] = []
 
     def init(self):
         """Start or initialize the simulation."""
-        if self._is_initialized:
+        if self.__is_initialized:
             raise RuntimeError("Simulation is already initialized.")
-        if self._is_cleaned_up:
+        if self.__is_cleaned_up:
             raise RuntimeError("Simulation has been cleaned up and cannot be reused.")
         self._init()
-        self._is_initialized = True
+        self.__is_initialized = True
 
     def _init(self):
         pass
 
     def start(self):
         """Build and start the simulation after it has been initialized."""
-        if self._is_started:
+        if self.__is_started:
             raise RuntimeError("Simulation is already started.")
-        if not self._is_initialized:
+        if not self.__is_initialized:
             raise RuntimeError("Simulation is not initialized.")
-        if self._is_cleaned_up:
+        if self.__is_cleaned_up:
             raise RuntimeError("Simulation has been cleaned up and cannot be reused.")
         self._start()
-        self._is_started = True
+        self.__is_started = True
 
     def _start(self):
         pass
 
     def cleanup(self):
         """Stop or clean up the simulation."""
-        if not self._is_initialized:
+        if not self.__is_initialized:
             raise RuntimeError("Cannot cleanup an uninitialized simulation.")
-        if self._is_cleaned_up:
+        if self.__is_cleaned_up:
             raise RuntimeError("Simulation is already cleaned up.")
         self._cleanup()
-        self._is_cleaned_up = True
+        self.__is_cleaned_up = True
 
     def _cleanup(self):
         pass
 
     def step(self):
         """Advance the physics simulation by one step."""
-        if not self._is_started:
+        if not self.__is_started:
             raise RuntimeError("Cannot step a non-started simulation.")
-        if self._is_cleaned_up:
+        if self.__is_cleaned_up:
             raise RuntimeError("Cannot step a cleaned up simulation.")
         for r in self._get_robots():
             r._pre_step()
+        for c in self.__pre_step_callbacks:
+            c(self)
         self._step()
         for r in self._get_robots():
             r._post_step()
+        for c in self.__post_step_callbacks:
+            c(self)
 
     def _step(self):
         pass
@@ -886,14 +894,13 @@ class BaseSimulator(ABC):
         """Returns the list of robots in the simulation."""
         pass
 
-    @property
-    def robots(self) -> list[BaseRobot]:
-        """The robots registered in this simulation."""
-        if not self._is_initialized:
-            raise RuntimeError("Cannot fetch robots from an uninitialized simulation.")
-        if self._is_cleaned_up:
-            raise RuntimeError("Cannot fetch robots from a cleaned up simulation.")
-        return self._get_robots()
+    def register_pre_step_callback(self, callback: Callable[[Self], None]):
+        """Register a callback to be called before each simulation step."""
+        self.__pre_step_callbacks.append(callback)
+
+    def register_post_step_callback(self, callback: Callable[[Self], None]):
+        """Register a callback to be called after each simulation step."""
+        self.__post_step_callbacks.append(callback)
 
     def __enter__(self):
         self.init()
@@ -903,13 +910,22 @@ class BaseSimulator(ABC):
         self.cleanup()
 
     @property
+    def robots(self) -> list[BaseRobot]:
+        """The robots registered in this simulation."""
+        if not self.__is_initialized:
+            raise RuntimeError("Cannot fetch robots from an uninitialized simulation.")
+        if self.__is_cleaned_up:
+            raise RuntimeError("Cannot fetch robots from a cleaned up simulation.")
+        return self._get_robots()
+
+    @property
     def is_initialized(self) -> bool:
-        return self._is_initialized
+        return self.__is_initialized
 
     @property
     def is_started(self) -> bool:
-        return self._is_started
+        return self.__is_started
 
     @property
     def is_cleaned_up(self) -> bool:
-        return self._is_cleaned_up
+        return self.__is_cleaned_up
