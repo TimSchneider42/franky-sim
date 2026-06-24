@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "franky-sim"
 description = "Drop-in Franka robot simulator implementing the libfranka network protocol."
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dynamic = ["version"]  # Use dynamic versioning from git tags
 dependencies = [
     "numpy",
@@ -57,7 +57,7 @@ packages = ["franky_sim"]
 
 [tool.black]
 line-length = 100
-target-version = ["py39"]
+target-version = ["py310"]
 
 [tool.isort]
 profile = "black"
