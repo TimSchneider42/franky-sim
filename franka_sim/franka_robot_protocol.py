@@ -249,8 +249,7 @@ class StopMoveCommand(BaseCommand):
             # Send Move response to break the waiting loop in the client
             if server.current_motion_id:
                 try:
-                    total_size = 12 + 4
-                    header = MessageHeader(RobotCommand.kMove, server.current_motion_id, total_size)
+                    header = MessageHeader(RobotCommand.kMove, server.current_motion_id, 4)
                     header_bytes = header.to_bytes()
                     response_data = struct.pack("<B3x", MoveStatus.kSuccess)
                     self.client_socket.sendall(header_bytes + response_data)

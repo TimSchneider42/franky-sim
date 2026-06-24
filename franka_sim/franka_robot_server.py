@@ -9,6 +9,7 @@ import numpy as np
 import pinocchio as pin
 
 from .base_simulator import BaseRobot
+from .franka_gripper_server import FrankaGripperServer
 from .franka_robot_protocol import (
     AutomaticErrorRecoveryCommand,
     BaseCommand,
@@ -66,7 +67,6 @@ class FrankaRobotServer(FrankaServer):
             RobotCommand.kSetEEToK: SetEEToKCommand,
         }
 
-        super().__init__(hostname_candidates, 1337, command_class_map, 10)
         self.__robot = robot
         self.__current_motion_id: int = 0
         self.__control_mode: ControlMode = ControlMode.IDLE
@@ -74,7 +74,14 @@ class FrankaRobotServer(FrankaServer):
         self.__current_control_command: UDPCommand = UDPCommand()
         self.__holding_q: Optional[tuple[float, ...]] = None
         self.__has_new_command = False
+        self.__gripper_server: FrankaGripperServer | None = None
+        super().__init__(hostname_candidates, 1337, command_class_map, 10)
         robot._set_server(self)
+
+    def _bind_children(self, hostname: str):
+        if self.__robot.has_gripper:
+            self.__gripper_server = FrankaGripperServer(self.__robot, hostname)
+            self.__gripper_server.init()
 
     def _reset_state(self):
         self.__current_motion_id = 0
@@ -120,6 +127,21 @@ class FrankaRobotServer(FrankaServer):
         self.__holding_q = tuple(self.__robot.state.q_d)
         self.__current_control_command = UDPCommand()
         self.__impedance_control_mode = ImpedanceControlMode.NONE
+
+    def process_commands(self):
+        super().process_commands()
+        if self.__gripper_server is not None:
+            self.__gripper_server.process_commands()
+
+    def send_state(self):
+        super().send_state()
+        if self.__gripper_server is not None:
+            self.__gripper_server.send_state()
+
+    def cleanup(self):
+        if self.__gripper_server is not None:
+            self.__gripper_server.cleanup()
+        super().cleanup()
 
     def _pre_process_commands(self):
         self.__has_new_command = False
@@ -239,3 +261,7 @@ class FrankaRobotServer(FrankaServer):
     @property
     def current_motion_id(self):
         return self.__current_motion_id
+
+    @property
+    def gripper_server(self):
+        return self.__gripper_server

@@ -14,6 +14,7 @@ from contextlib import contextmanager
 
 import franky
 import numpy as np
+import pytest
 
 from franka_sim import SimulationServer
 from franka_sim.mujoco_simulator import MujocoSimulator
@@ -215,3 +216,135 @@ def test_cartesian_velocity_control():
                     assert (
                         np.sign(v) == np.sign(d) or abs(d) < 5e-3
                     ), f"Phase {label}, axis {axis}: commanded v={v:.3f} but Δp={d:.4f}"
+
+
+# ---------------------------------------------------------------------------
+# Gripper helpers
+# ---------------------------------------------------------------------------
+
+GRIPPER_WIDTH_ATOL = 0.005  # m
+
+
+def make_gripper(hostname: str) -> franky.Gripper:
+    """Create a franky Gripper connected to the local simulation gripper server."""
+    return franky.Gripper(hostname)
+
+
+# ---------------------------------------------------------------------------
+# Test 5 – Gripper homing
+# ---------------------------------------------------------------------------
+
+
+def test_gripper_homing():
+    """
+    Home the gripper and verify that it opens to its maximum width.
+    """
+    with sim_server_context() as server:
+        gripper = make_gripper(server.robot_servers[0].hostname)
+        initial_width = gripper.width
+        result = gripper.homing()
+        assert result, "Gripper homing should return True"
+        np.testing.assert_allclose(
+            gripper.max_width,
+            0.08,
+            atol=GRIPPER_WIDTH_ATOL,
+            err_msg=(
+                f"After homing, width {gripper.width:.4f} m should equal "
+                f"max_width {gripper.max_width:.4f} m"
+            ),
+        )
+        np.testing.assert_allclose(
+            gripper.width,
+            initial_width,
+            atol=GRIPPER_WIDTH_ATOL,
+            err_msg=(
+                f"After homing, width {gripper.width:.4f} m should equal "
+                f"max_width {gripper.max_width:.4f} m"
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test 6 – Gripper move
+# ---------------------------------------------------------------------------
+
+
+def test_gripper_move():
+    """
+    Move the gripper through several target widths and verify the position
+    settles at each commanded value.
+    """
+    target_widths = [0.08, 0.04, 0.01, 0.06, 0.0]
+
+    with sim_server_context() as server:
+        gripper = make_gripper(server.robot_servers[0].hostname)
+        for target_width in target_widths:
+            result = gripper.move(target_width, 0.05)
+            assert result, f"Gripper move to {target_width:.3f} m should return True"
+            np.testing.assert_allclose(
+                gripper.width,
+                target_width,
+                atol=GRIPPER_WIDTH_ATOL,
+                err_msg=(
+                    f"After move({target_width:.3f}), width {gripper.width:.4f} m "
+                    f"is outside tolerance"
+                ),
+            )
+
+
+# ---------------------------------------------------------------------------
+# Test 7 – Gripper grasp success
+# ---------------------------------------------------------------------------
+
+
+def test_gripper_grasp_success():
+    """
+    Grasp at an achievable width with generous epsilon.  With no physical object
+    blocking the gripper, it reaches the commanded width and the epsilon check
+    should succeed.
+    """
+    with sim_server_context() as server:
+        gripper = make_gripper(server.robot_servers[0].hostname)
+        gripper.move(0.08, 0.05)  # start fully open
+
+        result = gripper.grasp(0.04, 0.02, 10.0, epsilon_inner=0.02, epsilon_outer=0.02)
+        assert result, "Gripper grasp should succeed when width is within epsilon"
+        assert gripper.is_grasped, "is_grasped should be True after a successful grasp"
+
+
+# ---------------------------------------------------------------------------
+# Test 8 – Gripper grasp failure
+# ---------------------------------------------------------------------------
+
+
+def test_gripper_grasp_failure():
+    """
+    Grasp at a width slightly above the physical maximum (0.08 m).  The gripper
+    can only open to 0.08 m, so it settles there.  The epsilon window around the
+    commanded 0.09 m does not cover 0.08 m, so the server returns failure and
+    franky raises CommandException.
+    """
+    with sim_server_context() as server:
+        gripper = make_gripper(server.robot_servers[0].hostname)
+        # Commanded 0.09 m, physical limit is 0.08 m:
+        # in_range = 0.09 - 0.005 <= 0.08 <= 0.09 + 0.005  →  0.085 <= 0.08  →  False
+        with pytest.raises(franky.CommandException):
+            gripper.grasp(0.09, 0.02, 10.0, epsilon_inner=0.005, epsilon_outer=0.005)
+        assert not gripper.is_grasped, "is_grasped should be False after a failed grasp"
+
+
+# ---------------------------------------------------------------------------
+# Test 9 – Gripper stop
+# ---------------------------------------------------------------------------
+
+
+def test_gripper_stop():
+    """
+    Issue stop on an idle gripper; the server should reply with kSuccess and
+    franky should return True.
+    """
+    with sim_server_context() as server:
+        gripper = make_gripper(server.robot_servers[0].hostname)
+        gripper.homing()
+        result = gripper.stop()
+        assert result, "Gripper stop should return True"

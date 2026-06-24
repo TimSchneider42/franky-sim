@@ -49,17 +49,29 @@ class NonBlockingReceiver:
 
 
 class MessageReceiver:
-    def __init__(self, sock: socket.socket, command_map: Mapping[int, Any]):
+    def __init__(
+        self,
+        sock: socket.socket,
+        command_map: Mapping[int, Any],
+        command_type_struct: str = "I",
+    ):
         self.__receiver = NonBlockingReceiver(sock)
         self.__current_header = None
         self.__command_map = command_map
+        self.__command_type_struct = command_type_struct
 
     def receive(self) -> tuple[Optional[MessageHeader], Optional[bytes]]:
         if self.__current_header is None:
-            header_data = self.__receiver.receive(12)
+            header_data = self.__receiver.receive(
+                MessageHeader.get_header_size(self.__command_type_struct)
+            )
             if header_data:
-                self.__current_header = MessageHeader.from_bytes(header_data, self.__command_map)
-                payload_size = self.__current_header.size - 12
+                self.__current_header = MessageHeader.from_bytes(
+                    header_data,
+                    self.__command_map,
+                    command_type_struct=self.__command_type_struct,
+                )
+                payload_size = self.__current_header.payload_size
                 if payload_size == 0:
                     header = self.__current_header
                     self.__current_header = None
@@ -68,7 +80,7 @@ class MessageReceiver:
                 return None, None
 
         if self.__current_header is not None:
-            payload_size = self.__current_header.size - 12
+            payload_size = self.__current_header.payload_size
             payload_data = self.__receiver.receive(payload_size)
             if payload_data:
                 header = self.__current_header
@@ -87,17 +99,36 @@ class MessageHeader:
 
     command: enum.IntEnum  # Command type (uint32)
     command_id: int  # Unique command identifier (uint32)
-    size: int  # Total message size including header (uint32)
+    payload_size: int  # Total message size including header (uint32)
 
     @classmethod
-    def from_bytes(cls, data: bytes, command_map: Mapping[int, Any]) -> "MessageHeader":
+    def from_bytes(
+        cls, data: bytes, command_map: Mapping[int, Any], command_type_struct: str = "I"
+    ) -> "MessageHeader":
         """Parse header from binary data using little-endian format"""
-        command, command_id, size = struct.unpack("<III", data)
-        return cls(command_map[command], command_id, size)
+        command, command_id, size = struct.unpack(cls._get_struct_format(command_type_struct), data)
+        return cls(
+            command_map[command],
+            command_id,
+            size - cls.get_header_size(command_type_struct),
+        )
 
-    def to_bytes(self) -> bytes:
+    def to_bytes(self, command_type_struct: str = "I") -> bytes:
         """Convert header to binary format using little-endian"""
-        return struct.pack("<III", self.command.value, self.command_id, self.size)
+        return struct.pack(
+            self._get_struct_format(command_type_struct),
+            self.command.value,
+            self.command_id,
+            self.get_header_size(command_type_struct) + self.payload_size,
+        )
+
+    @classmethod
+    def _get_struct_format(cls, command_type_struct: str = "I"):
+        return f"<{command_type_struct}II"
+
+    @classmethod
+    def get_header_size(cls, command_type_struct: str = "I"):
+        return struct.calcsize(cls._get_struct_format(command_type_struct))
 
 
 @dataclass
@@ -107,27 +138,41 @@ class BaseCommand(ABC):
 
     command_type: typing.ClassVar[Any]
 
-    def reply(self, status: typing.Union[enum.IntEnum, int], payload: bytes = b"") -> None:
+    def reply(
+        self,
+        status: typing.Union[enum.IntEnum, int],
+        payload: bytes = b"",
+        command_type_struct: str = "I",
+    ) -> None:
         """Send a standard command response with status, padding, and an optional payload."""
-        self.send_response(self.client_socket, self.command_type, self.command_id, status, payload)
+        self.send_response(
+            self.client_socket,
+            self.command_type,
+            self.command_id,
+            status,
+            payload,
+            command_type_struct=command_type_struct,
+        )
 
     @classmethod
     def send_response(
         cls,
         client_socket: "socket.socket",
-        command_type: Command,
+        command_type: enum.IntEnum,
         command_id: int,
         status: typing.Union[enum.IntEnum, int],
         payload: bytes = b"",
+        command_type_struct: str = "I",
+        status_type_struct: str = "B",
     ) -> None:
         """
         Send a standard command response with status, padding, and an optional payload without
         instantiating a command.
         """
         try:
-            total_size = 12 + 1 + len(payload)  # Header (12) + status (1) + payload
+            total_size = len(payload) + struct.calcsize(status_type_struct)
             header = MessageHeader(command_type, command_id, total_size)
-            header_bytes = header.to_bytes()
+            header_bytes = header.to_bytes(command_type_struct=command_type_struct)
 
             status_name = status.name if hasattr(status, "name") else str(status)
             status_value = status.value if hasattr(status, "value") else status
@@ -136,9 +181,8 @@ class BaseCommand(ABC):
                 f"Sending {command_type.name} response with status: {status_name} "
                 f"(value={status_value})"
             )
-            response_data = struct.pack("<B", status_value)
 
-            message = header_bytes + response_data + payload
+            message = header_bytes + struct.pack(f"<{status_type_struct}", status_value) + payload
             if not payload:
                 logger.debug(f"Sending {command_type.name} response message: {message.hex()}")
             else:
@@ -182,15 +226,14 @@ class ConnectCommand(BaseCommand):
             return cls(command_id, client_socket, version, network_udp_port)
         raise ValueError("Payload too short for Connect command")
 
-    def handle(self, server: "FrankaServer"):
+    def handle(self, server: "FrankaServer", command_type_struct: str = "I"):
         if server.udp_connected:
             logger.warning("Received connect command but already connected.")
             return
 
         try:
-            total_size = 12 + 8
-            header = MessageHeader(self.command_type, self.command_id, total_size)
-            header_bytes = header.to_bytes()
+            header = MessageHeader(self.command_type, self.command_id, 8)
+            header_bytes = header.to_bytes(command_type_struct=command_type_struct)
             response_data = struct.pack(
                 "<HH4x", ConnectStatus.kSuccess.value, server.library_version
             )
@@ -212,6 +255,8 @@ class FrankaServer(ABC):
         command_port: int,
         command_class_map: dict[enum.IntEnum, Type[BaseCommand]],
         library_version: int,
+        command_type_struct: str = "I",
+        state_message_id_type_struct: str = "Q",
     ):
         self.__hostname: str | None = None
         self.__hostname_candidates = hostname_candidates
@@ -233,6 +278,8 @@ class FrankaServer(ABC):
         }
         self.__command_type_map = {e.value: e for e in self.__command_class_map.keys()}
         self.__library_version = library_version
+        self.__command_type_struct = command_type_struct
+        self.__state_message_id_type_struct = state_message_id_type_struct
 
     def init(self):
         if self.__server_socket:
@@ -254,7 +301,7 @@ class FrankaServer(ABC):
             if len(tested_candidates) > 5:
                 tested_candidates = tested_candidates[:5]
                 tested_candidates.append("...")
-            raise ValueError(
+            raise OSError(
                 f"Could not find available hostname among {len(tested_candidates)} "
                 f"tested candidates: {', '.join(tested_candidates)}"
             )
@@ -318,7 +365,11 @@ class FrankaServer(ABC):
 
                 self.reset_state()
                 self.__tcp_socket = client_sock
-                self.__tcp_receiver = MessageReceiver(self.__tcp_socket, self.__command_type_map)
+                self.__tcp_receiver = MessageReceiver(
+                    self.__tcp_socket,
+                    self.__command_type_map,
+                    command_type_struct=self.__command_type_struct,
+                )
                 self.__client_address = addr[0]
                 logger.info(f"Accepted new connection from {addr} on port {self.__command_port}")
             except BlockingIOError:
@@ -332,8 +383,11 @@ class FrankaServer(ABC):
 
             command_class = self.__command_class_map.get(header.command)
             if command_class:
-                cmd = command_class.from_bytes(payload, header.command_id, self.__tcp_socket)
-                cmd.handle(self)
+                cmd = command_class.from_bytes(payload or b"", header.command_id, self.__tcp_socket)
+                if isinstance(cmd, ConnectCommand):
+                    cmd.handle(self, command_type_struct=self.__command_type_struct)
+                else:
+                    cmd.handle(self)
             else:
                 logger.warning(f"Unhandled command: {Command(header.command).name}")
 
@@ -355,7 +409,7 @@ class FrankaServer(ABC):
             return
 
         state_bytes = self._get_state_bytes()
-        message_id_bytes = struct.pack("<Q", self.__message_id)
+        message_id_bytes = struct.pack(f"<{self.__state_message_id_type_struct}", self.__message_id)
         self.__udp_socket.sendto(
             message_id_bytes + state_bytes,
             (self.__client_address, self.__client_udp_port),
