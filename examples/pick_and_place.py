@@ -85,7 +85,7 @@ with MujocoSimulator(enable_visualization=True) as sim:
             robot.move(franky.CartesianMotion(pose(0.04)))
 
             # Close gripper to grasp the cube.
-            success = gripper.grasp(GRASP_WIDTH, 0.022, 30.0,
+            success = gripper.grasp(GRASP_WIDTH, 0.02, 30.0,
                                     epsilon_inner=GRASP_EPS, epsilon_outer=GRASP_EPS)
             print(f"Grasp {'succeeded' if success else 'failed'} "
                   f"(width={gripper.width:.3f} m)")
