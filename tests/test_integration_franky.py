@@ -1,7 +1,7 @@
 """
 Integration tests using franky to control the simulated FR3 robot.
 
-Each test spins up a Genesis-backed SimulationServer, connects with franky's Robot,
+Each test spins up a Mujoco-backed SimulationServer, connects with franky's Robot,
 executes motions covering every joint / Cartesian direction, and asserts the robot
 reached the expected pose.
 
@@ -248,10 +248,7 @@ def test_gripper_homing():
             gripper.max_width,
             0.08,
             atol=GRIPPER_WIDTH_ATOL,
-            err_msg=(
-                f"After homing, width {gripper.width:.4f} m should equal "
-                f"max_width {gripper.max_width:.4f} m"
-            ),
+            err_msg=(f"After homing, max_width {gripper.max_width:.4f} m should equal 0.08m"),
         )
         np.testing.assert_allclose(
             gripper.width,
@@ -259,7 +256,7 @@ def test_gripper_homing():
             atol=GRIPPER_WIDTH_ATOL,
             err_msg=(
                 f"After homing, width {gripper.width:.4f} m should equal "
-                f"max_width {gripper.max_width:.4f} m"
+                f"the prior width {initial_width:.4f} m"
             ),
         )
 
