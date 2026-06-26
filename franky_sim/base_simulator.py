@@ -222,7 +222,7 @@ class BaseRobot(ABC):
         self.__robot_parameters = robot_parameters
 
         # Add End-Effector properties to the model
-        frame_id = self.__model.getFrameId("fr3_link8")
+        frame_id = self.__model.getFrameId("link8")
         frame = self.__model.frames[frame_id]
         joint_id = frame.parentJoint
 
