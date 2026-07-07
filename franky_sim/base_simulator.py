@@ -298,7 +298,7 @@ class BaseRobot(ABC):
             if sc["q_d"].has_explicit_value(time):
                 output = sc["q_d"].observers["fd"].last_derivative.copy()
             else:
-                output = np.array(state.dq_d)
+                output = np.array(state.dq)
             if sc["delbow_c"].has_explicit_value(time):
                 output[2] = sc["delbow_c"].get(time)[0]
             return output
