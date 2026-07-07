@@ -129,12 +129,20 @@ class FrankaRobotServer(FrankaServer):
                     f"{motion_generator_mode.name}."
                 )
 
-    def stop_motion(self):
+    def stop_motion(self, send_preemption_signal: bool = True):
         """Transition to IDLE mode and hold the current joint configuration."""
         self.__control_mode = ControlMode.IDLE
         self.__holding_q = tuple(self.__robot.state.q_d)
         self.__current_control_command = UDPCommand()
         self.__impedance_control_mode = ImpedanceControlMode.NONE
+        if self.__current_motion_id and send_preemption_signal:
+            BaseCommand.send_response(
+                self._tcp_socket,
+                RobotCommand.kMove,
+                self.__current_motion_id,
+                MoveStatus.kPreempted,
+            )
+            self.__current_motion_id = 0
 
     def process_commands(self):
         super().process_commands()
@@ -214,7 +222,7 @@ class FrankaRobotServer(FrankaServer):
 
         if cmd.message_id > 0:
             if cmd.motion_generation_finished:
-                self.stop_motion()
+                self.stop_motion(send_preemption_signal=False)
 
                 if self.__current_motion_id:
                     BaseCommand.send_response(
