@@ -373,6 +373,19 @@ class FrankaServer(ABC):
                 client_sock, addr = self.__server_socket.accept()
                 client_sock.setblocking(False)
                 client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                # Detect half-open connections from remote clients via TCP keepalive
+                # (probes are answered by the peer's kernel, so clients paused in a
+                # debugger are unaffected). Dead peers surface as a ConnectionError in
+                # __process_tcp_commands after ~11s.
+                client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                if hasattr(socket, "TCP_KEEPIDLE"):
+                    client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 5)
+                elif hasattr(socket, "TCP_KEEPALIVE"):  # macOS
+                    client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, 5)
+                if hasattr(socket, "TCP_KEEPINTVL"):
+                    client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 2)
+                if hasattr(socket, "TCP_KEEPCNT"):
+                    client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
 
                 self.reset_state()
                 self.__tcp_socket = client_sock
@@ -386,7 +399,12 @@ class FrankaServer(ABC):
             except BlockingIOError:
                 return
 
-        header, payload = self.__tcp_receiver.receive()
+        try:
+            header, payload = self.__tcp_receiver.receive()
+        except ConnectionError:
+            logger.info(f"Client {self.__client_address} disconnected.")
+            self.reset_state()
+            return
         if header:
             if header.command != Command.kConnect and not self.udp_connected:
                 logger.warning("Received command before connect.")
