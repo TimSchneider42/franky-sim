@@ -248,7 +248,7 @@ class FrankaRobotServer(FrankaServer):
 
         if self.__control_mode == ControlMode.TORQUE:
             controller_mode = StateControllerMode.kExternalController
-            motion_generator_mode = StateMotionGeneratorMode.kIdle
+            motion_generator_mode = StateMotionGeneratorMode.kNone
         else:
             if self.__impedance_control_mode == ImpedanceControlMode.JOINT_IMPEDANCE:
                 controller_mode = StateControllerMode.kJointImpedance
