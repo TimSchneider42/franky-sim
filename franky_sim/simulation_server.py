@@ -80,12 +80,16 @@ class SimulationServer:
     def run_forever(self, realtime: bool | float = True):
         """Block and run the control loop until stop() is called or KeyboardInterrupt."""
         self.running = True
+        self._run_loop(realtime)
+
+    def _run_loop(self, realtime: bool | float):
         while self.running:
             self.run_once(realtime)
 
     def run_async(self, realtime: bool | float = True):
         """Start the control loop in a background daemon thread."""
-        self.async_thread = threading.Thread(target=self.run_forever, args=(realtime,), daemon=True)
+        self.running = True
+        self.async_thread = threading.Thread(target=self._run_loop, args=(realtime,), daemon=True)
         self.async_thread.start()
 
     def cleanup(self) -> None:
