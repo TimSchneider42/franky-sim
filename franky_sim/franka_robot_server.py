@@ -221,7 +221,7 @@ class FrankaRobotServer(FrankaServer):
         cmd = UDPCommand.from_bytes(command_data)
 
         if cmd.message_id > 0:
-            if cmd.motion_generation_finished:
+            if cmd.motion_generation_finished or cmd.torque_command_finished:
                 self.stop_motion(send_preemption_signal=False)
 
                 if self.__current_motion_id:
